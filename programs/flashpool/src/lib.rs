@@ -91,10 +91,11 @@ pub mod flashpool {
 
         let amount = pool.current_amount;
 
-        // pool PDA signs the transfer — this is where the stored bump is used
+        // pool PDA signs the transfer — seeds must match exactly how the PDA was created
         let creator_key = pool.creator;
+        let pool_index_bytes = pool.pool_index.to_le_bytes();
         let bump = pool.bump;
-        let signer_seeds: &[&[&[u8]]] = &[&[b"pool", creator_key.as_ref(), &[bump]]];
+        let signer_seeds: &[&[&[u8]]] = &[&[b"pool", creator_key.as_ref(), &pool_index_bytes, &[bump]]];
 
         token::transfer(
             CpiContext::new_with_signer(
@@ -123,8 +124,9 @@ pub mod flashpool {
 
         let amount = ctx.accounts.contribution.amount;
         let creator_key = pool.creator;
+        let pool_index_bytes = pool.pool_index.to_le_bytes();
         let bump = pool.bump;
-        let signer_seeds: &[&[&[u8]]] = &[&[b"pool", creator_key.as_ref(), &[bump]]];
+        let signer_seeds: &[&[&[u8]]] = &[&[b"pool", creator_key.as_ref(), &pool_index_bytes, &[bump]]];
 
         // move USDC from vault → contributor
         token::transfer(
