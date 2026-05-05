@@ -8,6 +8,9 @@ skip-lint = false
 [programs.localnet]
 flashpool = "4UMZ1zCeuyySrY8sxtG6Y5bUvAyMcm5F4JG2aMHw9nV3"
 
+[programs.devnet]
+flashpool = "4UMZ1zCeuyySrY8sxtG6Y5bUvAyMcm5F4JG2aMHw9nV3"
+
 [registry]
 url = "https://api.apr.dev"
 
