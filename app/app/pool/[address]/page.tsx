@@ -13,8 +13,7 @@ import {
 import Navbar from "@/components/Navbar";
 import idl from "@/lib/idl.json";
 
-const PROGRAM_ID = new PublicKey(process.env.NEXT_PUBLIC_PROGRAM_ID!);
-const USDC_MINT  = new PublicKey(process.env.NEXT_PUBLIC_USDC_MINT!);
+
 
 interface PoolAccount {
   creator: PublicKey;
@@ -58,6 +57,8 @@ function timeLeft(deadline: number) {
 }
 
 export default function PoolPage() {
+  const PROGRAM_ID = new PublicKey(process.env.NEXT_PUBLIC_PROGRAM_ID!);
+  const USDC_MINT  = new PublicKey(process.env.NEXT_PUBLIC_USDC_MINT!);
   const { address } = useParams<{ address: string }>();
   const { connection } = useConnection();
   const wallet = useWallet();

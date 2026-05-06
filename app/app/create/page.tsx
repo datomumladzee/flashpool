@@ -8,12 +8,13 @@ import { PublicKey, SystemProgram } from "@solana/web3.js";
 import Navbar from "@/components/Navbar";
 import idl from "@/lib/idl.json";
 
-const PROGRAM_ID = new PublicKey(process.env.NEXT_PUBLIC_PROGRAM_ID!);
-const USDC_MINT  = new PublicKey(process.env.NEXT_PUBLIC_USDC_MINT!);
 
 type TxStatus = "idle" | "signing" | "pending" | "success" | "error";
 
 export default function CreatePage() {
+  const PROGRAM_ID = new PublicKey(process.env.NEXT_PUBLIC_PROGRAM_ID!);
+  const USDC_MINT  = new PublicKey(process.env.NEXT_PUBLIC_USDC_MINT!);
+
   const router = useRouter();
   const { connection } = useConnection();
   const wallet = useWallet();
