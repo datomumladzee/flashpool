@@ -1,3 +1,4 @@
 {
-  "rootDirectory": "app"
+  "rootDirectory": "app",
+  "framework": "nextjs"
 }
