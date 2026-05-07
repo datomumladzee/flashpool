@@ -1,36 +1,141 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { AnchorProvider, Program, BN } from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
+import { motion } from "framer-motion";
+import { AlertCircle } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import DateTimePicker from "@/components/DateTimePicker";
+import PoolOrbit from "@/components/PoolOrbit";
+import ErrorBanner from "@/components/ErrorBanner";
+import { translateError, type TranslatedError } from "@/lib/errors";
 import idl from "@/lib/idl.json";
 
+type FieldName = "reason" | "numContributors" | "amountPerPerson" | "deadline";
+const FIELD_ORDER: FieldName[] = [
+  "reason",
+  "numContributors",
+  "amountPerPerson",
+  "deadline",
+];
+
+function FieldError({ id, message }: { id?: string; message?: string }) {
+  if (!message) return null;
+  return (
+    <p
+      id={id}
+      role="alert"
+      className="mt-1.5 flex items-center gap-1.5 text-[12px] text-[color:var(--destructive)]"
+    >
+      <AlertCircle className="size-[13px] shrink-0" strokeWidth={2} />
+      {message}
+    </p>
+  );
+}
 
 type TxStatus = "idle" | "signing" | "pending" | "success" | "error";
 
 export default function CreatePage() {
   const PROGRAM_ID = new PublicKey(process.env.NEXT_PUBLIC_PROGRAM_ID!);
-  const USDC_MINT  = new PublicKey(process.env.NEXT_PUBLIC_USDC_MINT!);
+  const USDC_MINT = new PublicKey(process.env.NEXT_PUBLIC_USDC_MINT!);
 
   const router = useRouter();
   const { connection } = useConnection();
   const wallet = useWallet();
 
-  const [reason,          setReason]          = useState("");
-  const [numContributors, setNumContributors]  = useState(5);
-  const [amountPerPerson, setAmountPerPerson]  = useState(400);
-  const [deadline,        setDeadline]         = useState("");
-  const [status,          setStatus]           = useState<TxStatus>("idle");
-  const [errorMsg,        setErrorMsg]         = useState("");
+  const [reason, setReason] = useState("");
+  const [numContributors, setNumContributors] = useState(5);
+  const [amountPerPerson, setAmountPerPerson] = useState(400);
+  const [deadline, setDeadline] = useState("");
+  const [status, setStatus] = useState<TxStatus>("idle");
+  const [actionError, setActionError] = useState<TranslatedError | null>(null);
+  const [errors, setErrors] = useState<Partial<Record<FieldName, string>>>({});
+
+  // Refs so we can focus / scroll to the first invalid field on submit
+  const reasonRef = useRef<HTMLInputElement>(null);
+  const numContributorsRef = useRef<HTMLInputElement>(null);
+  const amountPerPersonRef = useRef<HTMLInputElement>(null);
+  const deadlineRef = useRef<HTMLDivElement>(null);
+
+  function validateField(field: FieldName): string | null {
+    switch (field) {
+      case "reason":
+        if (!reason.trim()) return "Give your pool a name.";
+        return null;
+      case "numContributors":
+        if (!Number.isFinite(numContributors) || numContributors < 1)
+          return "Pick at least 1 contributor.";
+        if (numContributors > 255) return "Cap is 255 contributors.";
+        return null;
+      case "amountPerPerson":
+        if (!Number.isFinite(amountPerPerson) || amountPerPerson < 1)
+          return "Enter an amount in USDC.";
+        return null;
+      case "deadline":
+        if (!deadline) return "Pick a deadline.";
+        if (new Date(deadline).getTime() <= Date.now())
+          return "Deadline must be in the future.";
+        return null;
+    }
+  }
+
+  function clearError(field: FieldName) {
+    setErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  }
+
+  function validateOnBlur(field: FieldName) {
+    const msg = validateField(field);
+    setErrors((prev) => {
+      if (msg) return { ...prev, [field]: msg };
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  }
+
+  function focusFirstInvalid(errs: Partial<Record<FieldName, string>>) {
+    const first = FIELD_ORDER.find((f) => errs[f]);
+    if (!first) return;
+    const map: Record<FieldName, HTMLElement | null> = {
+      reason: reasonRef.current,
+      numContributors: numContributorsRef.current,
+      amountPerPerson: amountPerPersonRef.current,
+      deadline: deadlineRef.current,
+    };
+    const node = map[first];
+    if (!node) return;
+    node.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (node instanceof HTMLInputElement) node.focus({ preventScroll: true });
+  }
 
   const goal = numContributors * amountPerPerson;
 
+  // Friendly "expires in X" preview under the deadline picker.
+  const expiresIn = useMemo(() => {
+    if (!deadline) return null;
+    const diff = new Date(deadline).getTime() - Date.now();
+    if (diff <= 0) return { text: "Already passed", warn: true };
+    const days = Math.floor(diff / 86_400_000);
+    const hours = Math.floor((diff % 86_400_000) / 3_600_000);
+    const text =
+      days > 0 ? `${days}d ${hours}h from now` : `${hours}h from now`;
+    return { text, warn: false };
+  }, [deadline]);
+
   const program = useMemo(() => {
     if (!wallet.publicKey || !wallet.signTransaction) return null;
-    const provider = new AnchorProvider(connection, wallet as any, { commitment: "confirmed" });
+    const provider = new AnchorProvider(connection, wallet as any, {
+      commitment: "confirmed",
+    });
     return new Program(idl as any, provider);
   }, [connection, wallet]);
 
@@ -38,19 +143,34 @@ export default function CreatePage() {
     e.preventDefault();
     if (!program || !wallet.publicKey) return;
 
+    // Run full validation; if any field is invalid, surface inline errors
+    // and focus the first invalid one instead of letting the contract call run.
+    const nextErrors: Partial<Record<FieldName, string>> = {};
+    for (const f of FIELD_ORDER) {
+      const msg = validateField(f);
+      if (msg) nextErrors[f] = msg;
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
+      focusFirstInvalid(nextErrors);
+      return;
+    }
+    setErrors({});
+
     setStatus("signing");
-    setErrorMsg("");
+    setActionError(null);
 
     try {
       const [userProfilePda] = PublicKey.findProgramAddressSync(
         [Buffer.from("user_profile"), wallet.publicKey.toBuffer()],
-        PROGRAM_ID
+        PROGRAM_ID,
       );
 
-      // get current pool_count — 0 if profile doesn't exist yet
       let poolCount = 0;
       try {
-        const profile = await (program.account as any).userProfile.fetch(userProfilePda);
+        const profile = await (program.account as any).userProfile.fetch(
+          userProfilePda,
+        );
         poolCount = profile.poolCount.toNumber();
       } catch {
         poolCount = 0;
@@ -59,11 +179,11 @@ export default function CreatePage() {
       const poolCountBytes = new BN(poolCount).toArrayLike(Buffer, "le", 8);
       const [poolPda] = PublicKey.findProgramAddressSync(
         [Buffer.from("pool"), wallet.publicKey.toBuffer(), poolCountBytes],
-        PROGRAM_ID
+        PROGRAM_ID,
       );
 
       const deadlineTimestamp = Math.floor(new Date(deadline).getTime() / 1000);
-      const amountLamports    = new BN(amountPerPerson * 1_000_000); // USDC has 6 decimals
+      const amountLamports = new BN(amountPerPerson * 1_000_000); // USDC has 6 decimals
 
       setStatus("pending");
 
@@ -73,256 +193,320 @@ export default function CreatePage() {
           numContributors,
           amountLamports,
           new BN(deadlineTimestamp),
-          USDC_MINT
+          USDC_MINT,
         )
         .accounts({
-          creator:       wallet.publicKey,
-          userProfile:   userProfilePda,
-          pool:          poolPda,
+          creator: wallet.publicKey,
+          userProfile: userProfilePda,
+          pool: poolPda,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
 
       setStatus("success");
       router.push(`/pool/${poolPda.toBase58()}`);
-
-    } catch (err: any) {
-      setStatus("error");
-      setErrorMsg(err?.message ?? "Transaction failed");
+    } catch (err: unknown) {
+      const translated = translateError(err);
+      setStatus(translated.level === "info" ? "idle" : "error");
+      setActionError(translated);
     }
   }
 
-  const inputStyle: React.CSSProperties = {
-    width: "100%",
-    background: "var(--bg-input)",
-    border: "1px solid var(--border)",
-    borderRadius: "10px",
-    padding: "12px 16px",
-    color: "var(--text)",
-    fontSize: "14px",
-    outline: "none",
-    fontFamily: "Inter, sans-serif",
-  };
-
-  const labelStyle: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    fontSize: "11px",
-    color: "var(--text-muted)",
-    marginBottom: "8px",
-    fontFamily: "JetBrains Mono, monospace",
-    letterSpacing: "0.08em",
-  };
-
   const busy = status === "signing" || status === "pending";
 
+  // Tailwind class fragments — used multiple times below
+  const labelCls =
+    "mb-2 flex items-center gap-2 font-[family-name:var(--font-mono-jb)] text-[11px] uppercase tracking-[0.14em] text-cream-muted";
+  const inputBaseCls =
+    "w-full rounded-xl border bg-white/[0.04] px-4 py-3 text-[15px] text-cream outline-none transition-all duration-200 placeholder:text-cream-muted/50 focus:bg-white/[0.06] focus:ring-2";
+  const inputOkCls =
+    "border-[color:var(--border)] focus:border-gold/55 focus:ring-gold/20";
+  const inputErrCls =
+    "border-[color:var(--destructive)]/70 focus:border-[color:var(--destructive)] focus:ring-[color:var(--destructive)]/20";
+  const inputCls = (err?: string) =>
+    `${inputBaseCls} ${err ? inputErrCls : inputOkCls}`;
+  const wrapperBaseCls =
+    "flex items-stretch overflow-hidden rounded-xl border bg-white/[0.04] transition-all duration-200 focus-within:bg-white/[0.06] focus-within:ring-2";
+  const wrapperOkCls =
+    "border-[color:var(--border)] focus-within:border-gold/55 focus-within:ring-gold/20";
+  const wrapperErrCls =
+    "border-[color:var(--destructive)]/70 focus-within:border-[color:var(--destructive)] focus-within:ring-[color:var(--destructive)]/20";
+  const wrapperCls = (err?: string) =>
+    `${wrapperBaseCls} ${err ? wrapperErrCls : wrapperOkCls}`;
+
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
-      <Navbar />
+    <div className="min-h-screen">
+      <Navbar sticky={false} />
 
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "40px 24px",
-        minHeight: "calc(100vh - 70px)",
-      }}>
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          maxWidth: "900px",
-          width: "100%",
-          background: "var(--bg-card)",
-          borderRadius: "20px",
-          border: "1px solid var(--border)",
-          overflow: "hidden",
-          boxShadow: "0 25px 50px rgba(0,0,0,0.3)",
-        }}>
-
-          {/* ── LEFT COLUMN ── */}
-          <div style={{ padding: "48px 40px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+      <div className="flex items-center justify-center px-6 py-12 sm:px-8 md:py-16 lg:px-12">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.55, ease: "easeOut" }}
+          className="grid w-full max-w-5xl grid-cols-1 overflow-hidden rounded-3xl border border-[color:var(--border)] bg-[color:var(--red-card)] shadow-[0_30px_80px_-30px_rgba(0,0,0,0.55)] md:grid-cols-2"
+        >
+          {/* ── LEFT COLUMN ── narrative + live preview */}
+          <div className="flex flex-col justify-between gap-12 p-10 lg:p-12">
             <div>
-              <p style={{ fontFamily: "JetBrains Mono, monospace", fontSize: "11px", color: "var(--gold)", letterSpacing: "0.15em", marginBottom: "24px" }}>
-                PROTOCOL V1.0
+              <p className="mb-6 text-center font-[family-name:var(--font-mono-jb)] text-[11px] uppercase tracking-[0.22em] text-gold">
+                Protocol V1.0
               </p>
-              <h1 style={{ fontSize: "36px", fontWeight: 700, color: "var(--text)", lineHeight: 1.2, marginBottom: "16px", fontFamily: "Inter, sans-serif" }}>
+              <h1 className="mb-5 text-center text-[clamp(32px,3.4vw,44px)] font-bold leading-[1.05] tracking-[-0.012em] text-cream">
                 Create a{" "}
-                <em style={{ fontFamily: "Playfair Display, serif", fontStyle: "italic", color: "var(--gold)" }}>Pool</em>
+                <em className="font-[family-name:var(--font-playfair)] font-bold italic text-gold">
+                  Pool
+                </em>
               </h1>
-              <p style={{ color: "var(--text-muted)", fontSize: "14px", lineHeight: 1.7 }}>
-                Deploy a transparent, autonomous smart contract to collect funds. If the goal isn't met, everyone gets refunded automatically.
+              <p className="text-center text-[15px] leading-[1.65] text-cream-muted">
+                Deploy a transparent, autonomous smart contract to collect
+                funds. If the goal isn&apos;t met by the deadline, every
+                contributor refunds themselves automatically.
               </p>
             </div>
 
-            {/* Live preview pills */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.6, ease: "easeOut", delay: 0.25 }}
+              className="mx-auto aspect-square w-full max-w-[360px]"
+            >
+              <PoolOrbit
+                nodeCount={Math.max(1, numContributors || 1)}
+                goalLabel={`$${goal.toLocaleString()}/$${goal.toLocaleString()}`}
+              />
+            </motion.div>
+
             <div>
-              <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
+              {/* Live preview pills */}
+              <div className="mb-5 grid grid-cols-3 gap-3">
                 {[
-                  { label: "GOAL",   value: `$${goal.toLocaleString()}` },
-                  { label: "PEOPLE", value: String(numContributors) },
-                  { label: "EACH",   value: `$${amountPerPerson}` },
+                  { label: "Goal", value: `$${goal.toLocaleString()}` },
+                  { label: "People", value: String(numContributors) },
+                  { label: "Each", value: `$${amountPerPerson}` },
                 ].map((pill) => (
-                  <div key={pill.label} style={{
-                    background: "rgba(0,0,0,0.2)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "10px",
-                    padding: "10px 14px",
-                    textAlign: "center",
-                    flex: 1,
-                  }}>
-                    <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: "9px", color: "var(--text-muted)", marginBottom: "4px", letterSpacing: "0.1em" }}>
+                  <div
+                    key={pill.label}
+                    className="rounded-xl border border-[color:var(--border)] bg-black/25 px-3 py-3 text-center"
+                  >
+                    <div className="mb-1 font-[family-name:var(--font-mono-jb)] text-[9px] uppercase tracking-[0.16em] text-cream-muted/80">
                       {pill.label}
                     </div>
-                    <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: "15px", fontWeight: 700, color: "var(--gold)" }}>
+                    <div className="font-[family-name:var(--font-mono-jb)] text-[15px] font-bold text-gold">
                       {pill.value}
                     </div>
                   </div>
                 ))}
               </div>
-              <p style={{ fontFamily: "JetBrains Mono, monospace", fontSize: "10px", color: "var(--text-muted)", letterSpacing: "0.05em" }}>
-                ✓ Verified Smart Contract &nbsp;•&nbsp; No Middleman
+
+              <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 font-[family-name:var(--font-mono-jb)] text-[14px] tracking-wide text-cream-muted/85">
+                <span className="relative flex size-1.5">
+                  <span className="absolute inset-0 animate-ping rounded-full bg-gold opacity-60" />
+                  <span className="relative size-1.5 rounded-full bg-gold" />
+                </span>
+                <span>Verified Smart Contract</span>
+                <span className="text-cream-muted/40">·</span>
+                <span>No Middleman</span>
               </p>
             </div>
           </div>
 
-          {/* ── RIGHT COLUMN ── */}
-          <div style={{
-            padding: "48px 40px",
-            background: "rgba(0,0,0,0.15)",
-            borderLeft: "1px solid var(--border)",
-          }}>
-            <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
-
-              {/* 01 Pool Purpose */}
+          {/* ── RIGHT COLUMN ── form */}
+          <div className="border-t border-[color:var(--border)] bg-black/15 p-10 md:border-t-0 md:border-l lg:p-12">
+            <form
+              onSubmit={handleSubmit}
+              noValidate
+              className="flex flex-col gap-5"
+            >
+              {/* 01 — Pool Purpose */}
               <div>
-                <label style={labelStyle}><span style={{ color: "var(--gold)" }}>01</span> POOL PURPOSE</label>
+                <label htmlFor="fp-reason" className={labelCls}>
+                  <span className="text-gold">01</span> Pool purpose
+                </label>
                 <input
+                  id="fp-reason"
+                  ref={reasonRef}
                   type="text"
                   placeholder="Trip to Rome"
                   value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  required
-                  style={inputStyle}
+                  onChange={(e) => {
+                    setReason(e.target.value);
+                    clearError("reason");
+                  }}
+                  onBlur={() => validateOnBlur("reason")}
+                  maxLength={60}
+                  aria-invalid={!!errors.reason}
+                  aria-describedby={errors.reason ? "fp-reason-error" : undefined}
+                  className={inputCls(errors.reason)}
+                />
+                <FieldError id="fp-reason-error" message={errors.reason} />
+              </div>
+
+              {/* 02 — Contributors stepper */}
+              <div>
+                <label htmlFor="fp-contributors" className={labelCls}>
+                  <span className="text-gold">02</span> Contributors
+                </label>
+                <div className={wrapperCls(errors.numContributors)}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNumContributors(Math.max(1, numContributors - 1));
+                      clearError("numContributors");
+                    }}
+                    aria-label="Decrease contributors"
+                    className="px-4 text-[20px] leading-none text-gold transition-colors hover:bg-gold/10"
+                  >
+                    −
+                  </button>
+                  <input
+                    id="fp-contributors"
+                    ref={numContributorsRef}
+                    type="number"
+                    min={1}
+                    max={255}
+                    value={numContributors}
+                    onChange={(e) => {
+                      setNumContributors(Number(e.target.value));
+                      clearError("numContributors");
+                    }}
+                    onBlur={() => validateOnBlur("numContributors")}
+                    aria-invalid={!!errors.numContributors}
+                    aria-describedby={
+                      errors.numContributors ? "fp-contributors-error" : undefined
+                    }
+                    className="flex-1 bg-transparent py-3 text-center text-[15px] text-cream outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  />
+                  <span className="self-center pr-3 font-[family-name:var(--font-mono-jb)] text-[11px] text-cream-muted">
+
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNumContributors(Math.min(255, numContributors + 1));
+                      clearError("numContributors");
+                    }}
+                    aria-label="Increase contributors"
+                    className="px-4 text-[20px] leading-none text-gold transition-colors hover:bg-gold/10"
+                  >
+                    +
+                  </button>
+                </div>
+                <FieldError
+                  id="fp-contributors-error"
+                  message={errors.numContributors}
                 />
               </div>
 
-              {/* 02 Contributors */}
+              {/* 03 — Per Person */}
               <div>
-                <label style={labelStyle}><span style={{ color: "var(--gold)" }}>02</span> CONTRIBUTORS</label>
-                <div style={{ display: "flex", alignItems: "center", background: "var(--bg-input)", border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden" }}>
-                  <button type="button" onClick={() => setNumContributors(Math.max(1, numContributors - 1))}
-                    style={{ padding: "12px 16px", background: "transparent", border: "none", color: "var(--gold)", fontSize: "20px", cursor: "pointer", lineHeight: 1 }}>−</button>
+                <label htmlFor="fp-amount" className={labelCls}>
+                  <span className="text-gold">03</span> Per person (USDC)
+                </label>
+                <div className={wrapperCls(errors.amountPerPerson)}>
+                  <span className="self-center pl-4 font-[family-name:var(--font-mono-jb)] text-[14px] text-cream-muted">
+                    $
+                  </span>
                   <input
-                    type="number" min={1} max={255}
-                    value={numContributors}
-                    onChange={(e) => setNumContributors(Number(e.target.value))}
-                    style={{ flex: 1, background: "transparent", border: "none", color: "var(--text)", fontSize: "14px", textAlign: "center", outline: "none", fontFamily: "Inter, sans-serif" }}
-                  />
-                  <span style={{ padding: "0 12px", color: "var(--text-muted)", fontSize: "11px", fontFamily: "JetBrains Mono, monospace" }}>pax</span>
-                  <button type="button" onClick={() => setNumContributors(Math.min(255, numContributors + 1))}
-                    style={{ padding: "12px 16px", background: "transparent", border: "none", color: "var(--gold)", fontSize: "20px", cursor: "pointer", lineHeight: 1 }}>+</button>
-                </div>
-              </div>
-
-              {/* 03 Per Person */}
-              <div>
-                <label style={labelStyle}><span style={{ color: "var(--gold)" }}>03</span> PER PERSON (USDC)</label>
-                <div style={{ display: "flex", alignItems: "center", background: "var(--bg-input)", border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden" }}>
-                  <span style={{ padding: "12px 14px", color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace", fontSize: "14px" }}>$</span>
-                  <input
-                    type="number" min={1}
+                    id="fp-amount"
+                    ref={amountPerPersonRef}
+                    type="number"
+                    min={1}
                     value={amountPerPerson}
-                    onChange={(e) => setAmountPerPerson(Number(e.target.value))}
-                    style={{ flex: 1, background: "transparent", border: "none", color: "var(--text)", fontSize: "14px", padding: "12px 0", outline: "none", fontFamily: "Inter, sans-serif" }}
+                    onChange={(e) => {
+                      setAmountPerPerson(Number(e.target.value));
+                      clearError("amountPerPerson");
+                    }}
+                    onBlur={() => validateOnBlur("amountPerPerson")}
+                    aria-invalid={!!errors.amountPerPerson}
+                    aria-describedby={
+                      errors.amountPerPerson ? "fp-amount-error" : undefined
+                    }
+                    className="flex-1 bg-transparent px-3 py-3 text-[15px] text-cream outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   />
-                  <span style={{ padding: "12px 14px", color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace", fontSize: "11px" }}>USDC</span>
+                  <span className="self-center pr-4 font-[family-name:var(--font-mono-jb)] text-[11px] text-cream-muted">
+                    USDC
+                  </span>
                 </div>
+                <FieldError
+                  id="fp-amount-error"
+                  message={errors.amountPerPerson}
+                />
               </div>
 
-              {/* 04 Total Goal (read-only) */}
+              {/* 04 — Total Goal (computed) */}
               <div>
-                <label style={labelStyle}><span style={{ color: "var(--gold)" }}>04</span> TOTAL POOL GOAL</label>
-                <div style={{
-                  background: "rgba(232,181,71,0.1)",
-                  border: "1px solid rgba(232,181,71,0.4)",
-                  borderRadius: "10px",
-                  padding: "12px 16px",
-                  color: "var(--gold)",
-                  fontFamily: "JetBrains Mono, monospace",
-                  fontSize: "16px",
-                  fontWeight: 700,
-                }}>
+                <label className={labelCls}>
+                  <span className="text-gold">04</span> Total pool goal
+                </label>
+                <div className="rounded-xl border border-gold/40 bg-gold/[0.08] px-4 py-3 font-[family-name:var(--font-mono-jb)] text-[16px] font-bold text-gold">
                   ${goal.toLocaleString()} USDC
                 </div>
               </div>
 
-              {/* 05 Expiration Date */}
-              <div>
-                <label style={labelStyle}><span style={{ color: "var(--gold)" }}>05</span> EXPIRATION DATE</label>
-                <input
-                  type="datetime-local"
+              {/* 05 — Expiration */}
+              <div ref={deadlineRef}>
+                <label className={labelCls}>
+                  <span className="text-gold">05</span> Expiration date
+                </label>
+                <DateTimePicker
                   value={deadline}
-                  onChange={(e) => setDeadline(e.target.value)}
-                  required
-                  style={{ ...inputStyle, colorScheme: "dark" }}
+                  onChange={(next) => {
+                    setDeadline(next);
+                    clearError("deadline");
+                  }}
+                  error={!!errors.deadline}
                 />
+                <FieldError message={errors.deadline} />
+                {expiresIn && !errors.deadline && (
+                  <p
+                    className={`mt-2 font-[family-name:var(--font-mono-jb)] text-[11px] tracking-wide ${
+                      expiresIn.warn ? "text-[#ff6b6b]" : "text-cream-muted/85"
+                    }`}
+                  >
+                    {expiresIn.warn ? "⚠ " : "→ "}
+                    Expires {expiresIn.text}
+                  </p>
+                )}
               </div>
 
               {/* Info note */}
-              <p style={{
-                fontSize: "12px",
-                color: "var(--text-muted)",
-                lineHeight: 1.6,
-                padding: "10px 14px",
-                background: "rgba(0,0,0,0.15)",
-                borderRadius: "8px",
-                borderLeft: "2px solid var(--gold)",
-              }}>
-                Funds are locked in escrow until the goal is met or the deadline passes.
+              <p className="rounded-lg border-l-2 border-gold bg-black/20 px-4 py-3 text-[12px] leading-[1.6] text-cream-muted">
+                Funds are locked in escrow until the goal is met or the
+                deadline passes.
               </p>
 
-              {/* Error */}
-              {status === "error" && (
-                <p style={{ fontSize: "13px", color: "#ff6b6b", background: "rgba(255,107,107,0.1)", padding: "10px 14px", borderRadius: "8px" }}>
-                  {errorMsg}
-                </p>
+              {/* Action error */}
+              {actionError && (
+                <ErrorBanner
+                  variant={actionError.level}
+                  title={actionError.title}
+                  message={actionError.message}
+                  action={actionError.action}
+                  raw={actionError.raw}
+                  onDismiss={() => setActionError(null)}
+                />
               )}
 
               {/* Submit */}
               <button
                 type="submit"
                 disabled={!wallet.publicKey || busy}
-                style={{
-                  width: "100%",
-                  padding: "14px",
-                  background: (!wallet.publicKey || busy) ? "rgba(232,181,71,0.4)" : "var(--gold)",
-                  color: "#000",
-                  border: "none",
-                  borderRadius: "12px",
-                  fontSize: "15px",
-                  fontWeight: 700,
-                  cursor: (!wallet.publicKey || busy) ? "not-allowed" : "pointer",
-                  fontFamily: "Inter, sans-serif",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "8px",
-                  transition: "opacity 0.2s",
-                }}
+                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gold px-6 py-4 text-[16px] font-bold text-[#1a0e0e] shadow-[0_18px_40px_-16px_rgba(232,181,71,0.7)] transition-all duration-300 hover:scale-[1.01] hover:shadow-[0_26px_60px_-14px_rgba(232,181,71,0.95)] disabled:cursor-not-allowed disabled:bg-gold/40 disabled:shadow-none disabled:hover:scale-100"
               >
-                ⚡ {
-                  status === "signing"  ? "Waiting for signature..." :
-                  status === "pending"  ? "Sending transaction..."   :
-                  !wallet.publicKey     ? "Connect wallet first"     :
-                  "Initialize Pool"
-                }
+                <span aria-hidden className="text-[18px] leading-none">
+                  ⚡
+                </span>
+                {status === "signing"
+                  ? "Waiting for signature..."
+                  : status === "pending"
+                  ? "Sending transaction..."
+                  : !wallet.publicKey
+                  ? "Connect wallet first"
+                  : "Initialize Pool"}
               </button>
-
             </form>
           </div>
-
-        </div>
+        </motion.div>
       </div>
     </div>
   );

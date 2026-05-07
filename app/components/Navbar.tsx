@@ -4,12 +4,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 
-export default function Navbar() {
+export default function Navbar({ sticky = true }: { sticky?: boolean } = {}) {
   return (
     <nav style={{
-      position: "sticky",
-      top: 0,
-      zIndex: 40,
+      position: sticky ? "sticky" : "relative",
+      top: sticky ? 0 : undefined,
+      zIndex: sticky ? 40 : undefined,
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",

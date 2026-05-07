@@ -3,32 +3,84 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
-const NUM = 5;
+interface PoolOrbitProps {
+  nodeCount?: number;
+  goalLabel?: string;
+}
+
 const SIZE = 480;
 const CENTER = SIZE / 2;
 const ORBIT_R = 175;
 const POOL_R = 64;
 const ARC_R = POOL_R + 14;
 
-const NAMES = ["DM", "ZL", "OG", "RS", "JT"];
-
-// Cycle target: ~6s total
+// Cycle target: ~6s total at the default count
 //   initial pause + (NUM × COIN_STEP) + CELEBRATE = ~6000ms
 const INITIAL_DELAY = 250;
 const COIN_STEP = 800;        // ms between coins (also coin flight duration)
 const CELEBRATE_HOLD = 1750;
 
-const angleOf = (i: number) => (i / NUM) * Math.PI * 2 - Math.PI / 2;
-const posOf = (i: number) => {
-  const a = angleOf(i);
-  return [CENTER + ORBIT_R * Math.cos(a), CENTER + ORBIT_R * Math.sin(a)] as const;
-};
+const NAMES = [
+  "DM", "ZL", "OG", "RS", "JT",
+"AM", "KB", "TS", "WP", "VR", "SH", "NK",
+"PX", "LV", "QN", "CY", "FD", "HJ", "BM", "UR", "XE", "TI",
+"GA", "PL", "RW", "DK", "MF", "YC", "NZ", "QA", "VB", "LU",
+"XE", "TR", "JM", "KO", "FI", "GH", "CP", "SD", "YL", "WX",
+"BV", "EP", "XA", "UC", "RO", "IN", "KL", "MT", "PQ", "ZH",
+"AF", "GD", "JE", "SN", "TV", "XO", "LM", "QR", "UY", "CB",
+"HF", "IK", "NO", "PS", "RT", "VW", "YZ", "AC", "DE", "FG",
+"HJ", "KL", "MN", "OP", "QR", "ST", "UV", "WX", "YZ", "BA",
+"CD", "EF", "GH", "IJ", "JK", "LM", "NP", "RS", "TU", "VW",
+"XY", "ZA", "BC", "DF", "EG", "HI", "JL", "KM", "NP", "QT"
+];
+const labelFor = (i: number) => NAMES[i] ?? `U${i + 1}`;
 
-export default function PoolOrbit() {
+// Renders the live "X/Y" center text. If goalLabel contains a "/" with a
+// numeric left side (e.g. "5/5", "$1,200/$1,200"), the left side is scaled
+// proportionally to filled/total so the label tracks the animation. Otherwise
+// it falls back to "{filled}/{rightSide}" or just goalLabel.
+function formatProgressLabel(
+  filled: number,
+  total: number,
+  goalLabel: string,
+): string {
+  const slashIdx = goalLabel.indexOf("/");
+  if (slashIdx === -1) return goalLabel;
+  const leftStr = goalLabel.slice(0, slashIdx);
+  const rightStr = goalLabel.slice(slashIdx + 1);
+  const match = leftStr.match(/^(\D*?)([\d,]+(?:\.\d+)?)(.*)$/);
+  if (!match) return `${filled}/${rightStr}`;
+  const [, prefix, numStr, suffix] = match;
+  const totalNum = Number(numStr.replace(/,/g, ""));
+  if (!Number.isFinite(totalNum)) return `${filled}/${rightStr}`;
+  const currentNum = total > 0 ? Math.round((filled / total) * totalNum) : 0;
+  return `${prefix}${currentNum.toLocaleString()}${suffix}/${rightStr}`;
+}
+
+export default function PoolOrbit({
+  nodeCount = 5,
+  goalLabel = "5/5",
+}: PoolOrbitProps = {}) {
+  const NUM = Math.max(1, Math.min(100, Math.floor(nodeCount)));
+
   // step: 0 = idle, 1..NUM = coin from contributor i-1 in flight; after NUM = celebrating
   const [step, setStep] = useState(0);
   const [filled, setFilled] = useState(0);
   const [celebrating, setCelebrating] = useState(false);
+
+  const angleOf = (i: number) => (i / NUM) * Math.PI * 2 - Math.PI / 2;
+  const posOf = (i: number) => {
+    const a = angleOf(i);
+    return [CENTER + ORBIT_R * Math.cos(a), CENTER + ORBIT_R * Math.sin(a)] as const;
+  };
+
+  // Reset the animation cleanly whenever the node count changes so we don't
+  // leave a stale `filled` pointing at a node that no longer exists.
+  useEffect(() => {
+    setStep(0);
+    setFilled(0);
+    setCelebrating(false);
+  }, [NUM]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
@@ -51,10 +103,13 @@ export default function PoolOrbit() {
     }
 
     return () => clearTimeout(timer);
-  }, [step, celebrating]);
+  }, [step, celebrating, NUM]);
 
   const arcCircumference = 2 * Math.PI * ARC_R;
   const filledFraction = filled / NUM;
+  const centerText = formatProgressLabel(filled, NUM, goalLabel);
+  const centerFontSize =
+    centerText.length <= 5 ? 26 : centerText.length <= 9 ? 18 : 14;
 
   return (
     <svg
@@ -181,7 +236,7 @@ export default function PoolOrbit() {
                 letterSpacing: "0.08em",
               }}
             >
-              {NAMES[i]}
+              {labelFor(i)}
             </text>
           </g>
         );
@@ -290,7 +345,7 @@ export default function PoolOrbit() {
         x={CENTER}
         y={CENTER + 14}
         textAnchor="middle"
-        fontSize={26}
+        fontSize={centerFontSize}
         fontWeight={700}
         fill="#E8B547"
         animate={{ scale: celebrating ? [1, 1.2, 1] : 1 }}
@@ -301,7 +356,7 @@ export default function PoolOrbit() {
           transformBox: "fill-box",
         }}
       >
-        {filled}/{NUM}
+        {centerText}
       </motion.text>
 
       {/* Goal-met label, fades in during celebration */}
