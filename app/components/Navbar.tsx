@@ -7,11 +7,17 @@ import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 export default function Navbar() {
   return (
     <nav style={{
+      position: "sticky",
+      top: 0,
+      zIndex: 40,
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
       padding: "16px 48px",
       borderBottom: "1px solid rgba(255,255,255,0.08)",
+      backgroundColor: "rgba(155, 56, 60, 0.65)",
+      backdropFilter: "blur(14px) saturate(140%)",
+      WebkitBackdropFilter: "blur(14px) saturate(140%)",
     }}>
       <Link href="/" style={{ display: "flex", alignItems: "center", gap: "10px", textDecoration: "none" }}>
         <Image src="/logo.png" alt="FlashPool" width={32} height={32} style={{ borderRadius: "6px" }} />
