@@ -9,7 +9,8 @@ interface IntroProps {
 }
 
 // Total intro budget — overlay starts exiting at HOLD_MS, exit anim adds ~0.5s.
-const HOLD_MS = 1250;
+// Once-per-session, so we let it breathe a bit longer than a refresh-time intro.
+const HOLD_MS = 1700;
 
 export default function Intro({ onComplete }: IntroProps) {
   const [show, setShow] = useState(true);

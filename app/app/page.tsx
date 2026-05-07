@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import Hero from "@/components/Hero";
 import Intro from "@/components/Intro";
@@ -10,12 +10,28 @@ import FinalCTA from "@/components/FinalCTA";
 import Footer from "@/components/Footer";
 import SectionDivider from "@/components/SectionDivider";
 
+const SESSION_KEY = "flashpool_intro_seen";
+
 export default function Home() {
-  const [introDone, setIntroDone] = useState(false);
+  // Tri-state so neither Intro nor "no Intro" flashes before the
+  // sessionStorage check runs in the effect.
+  const [introState, setIntroState] = useState<"pending" | "playing" | "done">(
+    "pending",
+  );
+
+  useEffect(() => {
+    const seen = sessionStorage.getItem(SESSION_KEY) === "1";
+    setIntroState(seen ? "done" : "playing");
+  }, []);
+
+  const handleIntroComplete = () => {
+    sessionStorage.setItem(SESSION_KEY, "1");
+    setIntroState("done");
+  };
 
   return (
     <div className="min-h-screen">
-      {!introDone && <Intro onComplete={() => setIntroDone(true)} />}
+      {introState === "playing" && <Intro onComplete={handleIntroComplete} />}
       <Navbar />
       <Hero />
       <SectionDivider />
