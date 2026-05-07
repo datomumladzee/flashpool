@@ -10,13 +10,13 @@ export default function Navbar() {
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
-      padding: "16px 32px",
+      padding: "16px 48px",
       borderBottom: "1px solid rgba(255,255,255,0.08)",
     }}>
       <Link href="/" style={{ display: "flex", alignItems: "center", gap: "10px", textDecoration: "none" }}>
         <Image src="/logo.png" alt="FlashPool" width={32} height={32} style={{ borderRadius: "6px" }} />
         <span style={{
-          fontFamily: "Inter, sans-serif",
+          fontFamily: "var(--font-inter), sans-serif",
           fontWeight: 600,
           fontSize: "18px",
           color: "#f5e6e6",
@@ -29,7 +29,7 @@ export default function Navbar() {
       <WalletMultiButton style={{
         backgroundColor: "#E8B547",
         color: "#000",
-        fontFamily: "Inter, sans-serif",
+        fontFamily: "var(--font-inter), sans-serif",
         fontWeight: 600,
         fontSize: "14px",
         borderRadius: "10px",
