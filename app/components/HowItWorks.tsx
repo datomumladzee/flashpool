@@ -27,7 +27,7 @@ const STEPS: Step[] = [
   {
     num: "03",
     title: "Settle",
-    body: "Goal met? Creator withdraws. Deadline passed unfunded? Every contributor gets an automatic refund.",
+    body: "Goal met? Creator withdraws. Deadline passed unfunded? Every contributor gets a refund.",
     icon: HandCoins,
   },
 ];
@@ -62,7 +62,7 @@ export default function HowItWorks() {
   return (
     <section
       id="how-it-works"
-      className="relative px-6 py-20 sm:px-8 md:py-24 lg:px-12"
+      className="relative px-4 py-14 sm:px-6 sm:py-20 md:px-8 md:py-24 lg:px-12"
     >
       <div className="mx-auto max-w-7xl">
         {/* Header block */}
@@ -71,21 +71,19 @@ export default function HowItWorks() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-80px" }}
           transition={{ duration: 0.6, ease: "easeOut" }}
-          className="mx-auto mb-20 max-w-2xl text-center lg:mb-24"
+          className="mx-auto mb-14 max-w-2xl text-center md:mb-20 lg:mb-24"
         >
-          <p className="mb-5 font-[family-name:var(--font-mono-jb)] text-[11px] uppercase tracking-[0.22em] text-gold">
-            How it works
-          </p>
-          <h2 className="mb-6 text-[clamp(40px,5vw,64px)] font-bold leading-[1.04] tracking-[-0.012em] text-cream">
+
+          <h2 className="mb-4 text-[clamp(34px,6vw,64px)] font-bold leading-[1.04] tracking-[-0.012em] text-cream sm:mb-6">
             How It Works
           </h2>
-          <p className="font-[family-name:var(--font-playfair)] text-[clamp(22px,2.2vw,30px)] italic text-cream-muted">
+          <p className="font-[family-name:var(--font-serif)] text-[clamp(18px,3.4vw,30px)] italic text-cream-muted">
             Three steps to settle.
           </p>
         </motion.div>
 
         {/* Step cards */}
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-3 lg:gap-10">
+        <div className="grid grid-cols-1 gap-6 sm:gap-8 md:grid-cols-3 lg:gap-10">
           {STEPS.map((step, i) => {
             const v = VARIANTS[i];
             const Icon = step.icon;
@@ -101,29 +99,29 @@ export default function HowItWorks() {
                   delay: i * 0.12,
                 }}
                 whileHover={{ y: -6 }}
-                className={`group relative flex min-h-[400px] flex-col rounded-3xl p-10 transition-shadow duration-300 lg:p-12 ${v.card} ${v.glow}`}
+                className={`group relative flex min-h-[320px] flex-col rounded-3xl p-7 transition-shadow duration-300 sm:min-h-[400px] sm:p-10 lg:p-12 ${v.card} ${v.glow}`}
               >
-                {/* Number — Playfair italic, large, dominant */}
+                {/* Number — Fraunces italic, large, dominant */}
                 <span
-                  className={`mb-10 font-[family-name:var(--font-playfair)] text-[68px] font-bold italic leading-none tracking-tight lg:text-[76px] ${v.number}`}
+                  className={`mb-6 font-[family-name:var(--font-serif)] text-[56px] font-bold italic leading-none tracking-tight sm:mb-10 sm:text-[68px] lg:text-[76px] ${v.number}`}
                 >
                   {step.num}
                 </span>
 
                 {/* Icon */}
                 <span
-                  className={`mb-8 inline-flex size-14 items-center justify-center rounded-2xl transition-all duration-300 group-hover:scale-105 ${v.iconWrap}`}
+                  className={`mb-6 inline-flex size-12 items-center justify-center rounded-2xl transition-all duration-300 group-hover:scale-105 sm:mb-8 sm:size-14 ${v.iconWrap}`}
                 >
-                  <Icon className="size-7 text-gold" strokeWidth={1.6} />
+                  <Icon className="size-6 text-gold sm:size-7" strokeWidth={1.6} />
                 </span>
 
                 {/* Title */}
-                <h3 className="mb-5 text-[28px] font-bold leading-tight tracking-tight text-cream">
+                <h3 className="mb-4 text-[22px] font-bold leading-tight tracking-tight text-cream sm:mb-5 sm:text-[28px]">
                   {step.title}
                 </h3>
 
                 {/* Body */}
-                <p className="text-[16px] leading-[1.65] text-cream-muted">
+                <p className="text-[15px] leading-[1.65] text-cream-muted sm:text-[16px]">
                   {step.body}
                 </p>
               </motion.div>

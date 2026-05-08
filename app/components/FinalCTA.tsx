@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 
 export default function FinalCTA() {
   return (
-    <section className="relative px-6 py-20 sm:px-8 md:py-24 lg:px-12">
+    <section className="relative px-4 py-14 sm:px-6 sm:py-20 md:px-8 md:py-24 lg:px-12">
       <div className="mx-auto max-w-3xl text-center">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -14,12 +14,12 @@ export default function FinalCTA() {
           transition={{ duration: 0.6, ease: "easeOut" }}
         >
           <p className="mb-5 font-[family-name:var(--font-mono-jb)] text-[11px] uppercase tracking-[0.22em] text-gold">
-            Ready when you are
+            START YOUR POOLING JOURNEy
           </p>
-          <h2 className="mb-6 text-[clamp(40px,5vw,64px)] font-bold leading-[1.04] tracking-[-0.012em] text-cream">
+          <h2 className="mb-4 text-[clamp(34px,6vw,64px)] font-bold leading-[1.04] tracking-[-0.012em] text-cream sm:mb-6">
             Ready to start a pool?
           </h2>
-          <p className="mx-auto mb-14 max-w-xl font-[family-name:var(--font-playfair)] text-[clamp(22px,2.2vw,30px)] italic text-cream-muted">
+          <p className="mx-auto mb-10 max-w-xl font-[family-name:var(--font-serif)] text-[clamp(18px,3.4vw,30px)] italic text-cream-muted sm:mb-14">
             Connect your wallet and deploy in under a minute.
           </p>
 
@@ -36,9 +36,9 @@ export default function FinalCTA() {
 
             <Link
               href="/create"
-              className="inline-flex items-center justify-center gap-3 rounded-2xl bg-gold px-12 py-6 text-[20px] font-bold text-[#1a0e0e] shadow-[0_24px_60px_-20px_rgba(232,168,56,0.85)] transition-all duration-300 hover:scale-[1.03] hover:shadow-[0_32px_80px_-18px_rgba(232,168,56,1)]"
+              className="inline-flex items-center justify-center gap-3 rounded-2xl bg-gold px-8 py-5 text-[17px] font-bold text-[#1a0e0e] shadow-[0_24px_60px_-20px_rgba(232,168,56,0.85)] transition-all duration-300 hover:scale-[1.03] hover:shadow-[0_32px_80px_-18px_rgba(232,168,56,1)] sm:px-12 sm:py-6 sm:text-[20px]"
             >
-              <span aria-hidden className="text-[22px] leading-none">
+              <span aria-hidden className="text-[20px] leading-none sm:text-[22px]">
                 ⚡
               </span>
               Create a Pool

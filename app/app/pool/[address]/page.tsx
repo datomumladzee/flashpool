@@ -13,12 +13,20 @@ import {
 import { motion } from "framer-motion";
 import { Lock, Zap } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
 import ErrorBanner from "@/components/ErrorBanner";
 import { translateError, type TranslatedError } from "@/lib/errors";
+import { recordContribution } from "@/lib/history";
+import {
+  savePoolSnapshot,
+  getPoolSnapshot,
+  type PoolSnapshot,
+} from "@/lib/poolSnapshots";
+import { formatTimeLeft } from "@/lib/time";
 import idl from "@/lib/idl.json";
 
 const SHELL_OUTER_CLS =
-  "flex items-center justify-center px-6 py-12 sm:px-8 md:py-16 lg:px-12";
+  "flex items-center justify-center px-4 py-8 sm:px-6 sm:py-12 md:px-8 md:py-16 lg:px-12";
 const SHELL_CARD_BASE =
   "relative w-full max-w-xl overflow-hidden rounded-3xl bg-gradient-to-b from-[color:var(--red-card)] to-[color:var(--red-input)]";
 const SHELL_CARD_DEFAULT =
@@ -43,6 +51,8 @@ const PAID_PILL =
   "rounded-full border border-[#5fbf7f]/35 bg-[#5fbf7f]/15 px-2.5 py-0.5 text-[10px] font-bold tracking-[0.08em] text-[#7fd99f]";
 const PENDING_PILL =
   "rounded-full border border-[color:var(--border)] bg-white/[0.04] px-2.5 py-0.5 text-[10px] font-bold tracking-[0.08em] text-cream-muted";
+const REFUNDED_PILL =
+  "rounded-full border border-[color:var(--destructive)]/40 bg-[color:var(--destructive)]/12 px-2.5 py-0.5 text-[10px] font-bold tracking-[0.08em] text-[color:var(--destructive)]";
 
 type Bolt = { id: number; left: number; delay: number; size: number; rotate: number };
 function generateBolts(count: number): Bolt[] {
@@ -62,8 +72,18 @@ function generateBolts(count: number): Bolt[] {
 //   - pulsing gold halo radiating from the progress bar
 //   - radial confetti bolts from the center pool
 function GoldBoltsCelebration({ active }: { active: boolean }) {
+  // Count drops on phones — 50 bolts melt a low-end CPU and hide the card
+  // contents anyway. Detect on mount; keeps SSR stable.
+  const [count, setCount] = useState<number>(50);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.matchMedia("(max-width: 640px)").matches) setCount(8);
+  }, []);
   // useState initializer runs once per instance; values stabilize after hydration.
-  const [bolts] = useState(() => generateBolts(50));
+  const [bolts, setBolts] = useState(() => generateBolts(50));
+  useEffect(() => {
+    setBolts(generateBolts(count));
+  }, [count]);
   if (!active) return null;
   return (
     <div
@@ -127,12 +147,8 @@ function timeAgo(ts: number) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-function timeLeft(deadline: number) {
-  const diff = deadline - Math.floor(Date.now() / 1000);
-  if (diff <= 0) return "Expired";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m left`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h left`;
-  return `${Math.floor(diff / 86400)}d left`;
+function timeLeft(deadlineSec: number) {
+  return formatTimeLeft(new Date(deadlineSec * 1000));
 }
 
 export default function PoolPage() {
@@ -144,6 +160,7 @@ export default function PoolPage() {
 
   const [pool,          setPool]          = useState<PoolAccount | null>(null);
   const [contributions, setContributions] = useState<ContributionAccount[]>([]);
+  const [snapshot,      setSnapshot]      = useState<PoolSnapshot | null>(null);
   // Map of contribution PDA (base58) → its on-chain creation tx signature.
   const [txSigs,        setTxSigs]        = useState<Record<string, string>>({});
   const [loading,       setLoading]       = useState(true);
@@ -180,21 +197,42 @@ export default function PoolPage() {
       ]);
       setContributions(allContributions);
 
-      // Resolve the real on-chain contribute-tx signature for each contribution
-      // PDA. The PDA is created by the contribute() ix and not touched again
-      // until refund (which closes it), so the most-recent signature is the
-      // contribute tx for any contribution we still see here.
+      // Merge live state into the local snapshot so refunds don't erase history.
+      const merged = savePoolSnapshot({
+        address: poolPda.toBase58(),
+        raised: poolData.currentAmount.toNumber() / 1_000_000,
+        goal: poolData.goal.toNumber() / 1_000_000,
+        numContributors: poolData.numContributors,
+        reason: poolData.reason,
+        deadline: poolData.deadline.toNumber(),
+        contributors: allContributions.map((c: ContributionAccount) => ({
+          contributor: c.account.contributor.toBase58(),
+          contributionPda: c.publicKey.toBase58(),
+          amount: c.account.amount.toNumber() / 1_000_000,
+        })),
+      });
+      setSnapshot(merged);
+
+      // Resolve a representative on-chain signature for each contribution PDA.
+      // For active contributions this is the contribute() tx (the PDA is
+      // created by contribute and not touched until refund). For refunded
+      // contributions the PDA is closed but the RPC still returns its history,
+      // so the most-recent signature is the refund tx itself.
       try {
+        const allPdas = Array.from(
+          new Set([
+            ...allContributions.map((c: ContributionAccount) => c.publicKey.toBase58()),
+            ...merged.contributors.map((c) => c.contributionPda),
+          ]),
+        );
         const sigEntries = await Promise.all(
-          allContributions.map(async (c: ContributionAccount) => {
+          allPdas.map(async (pdaBase58) => {
             try {
-              const sigs = await connection.getSignaturesForAddress(
-                c.publicKey,
-                { limit: 1 },
-              );
-              return [c.publicKey.toBase58(), sigs[0]?.signature ?? ""] as const;
+              const pk = new PublicKey(pdaBase58);
+              const sigs = await connection.getSignaturesForAddress(pk, { limit: 1 });
+              return [pdaBase58, sigs[0]?.signature ?? ""] as const;
             } catch {
-              return [c.publicKey.toBase58(), ""] as const;
+              return [pdaBase58, ""] as const;
             }
           }),
         );
@@ -213,6 +251,10 @@ export default function PoolPage() {
 
   // initial fetch + live subscription
   useEffect(() => {
+    if (poolPda) {
+      const cached = getPoolSnapshot(poolPda.toBase58());
+      if (cached) setSnapshot(cached);
+    }
     fetchPool();
     if (!poolPda) return;
     const id = connection.onAccountChange(poolPda, () => fetchPool(), "confirmed");
@@ -251,14 +293,23 @@ export default function PoolPage() {
     : null;
   const hasContributed = !!myContribution;
 
-  const progressPct = pool
+  const onchainProgressPct = pool
     ? Math.min(100, (pool.currentAmount.toNumber() / pool.goal.toNumber()) * 100)
     : 0;
 
   const amountUSDC = pool ? pool.amountPerPerson.toNumber() / 1_000_000 : 0;
-  const raisedUSDC = pool ? pool.currentAmount.toNumber() / 1_000_000 : 0;
+  const onchainRaisedUSDC = pool ? pool.currentAmount.toNumber() / 1_000_000 : 0;
   const goalUSDC   = pool ? pool.goal.toNumber() / 1_000_000 : 0;
-  const remainingUSDC = goalUSDC - raisedUSDC;
+  // For missed pools (expired without hitting goal), preserve the high-water
+  // mark from the snapshot so the UI doesn't show $0 raised after refunds.
+  const missed = isExpired && !isGoalMet;
+  const raisedUSDC = missed && snapshot
+    ? Math.max(onchainRaisedUSDC, snapshot.raised)
+    : onchainRaisedUSDC;
+  const remainingUSDC = Math.max(0, goalUSDC - raisedUSDC);
+  const progressPct = missed && goalUSDC > 0
+    ? Math.min(100, (raisedUSDC / goalUSDC) * 100)
+    : onchainProgressPct;
 
   // ── actions ──
   async function contribute() {
@@ -286,6 +337,7 @@ export default function PoolPage() {
         })
         .rpc();
       setTxStatus("success");
+      if (poolPda) recordContribution(poolPda.toBase58());
       await fetchPool();
     } catch (e: unknown) {
       const translated = translateError(e);
@@ -421,9 +473,9 @@ export default function PoolPage() {
 
   // ── render ──
   if (loading) return (
-    <div className="min-h-screen">
+    <div className="flex min-h-screen flex-col">
       <Navbar sticky={false} />
-      <div className={SHELL_OUTER_CLS}>
+      <div className={`${SHELL_OUTER_CLS} flex-1`}>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -435,6 +487,7 @@ export default function PoolPage() {
           </div>
         </motion.div>
       </div>
+      <Footer />
     </div>
   );
 
@@ -445,9 +498,9 @@ export default function PoolPage() {
       level: "error",
     };
     return (
-      <div className="min-h-screen">
+      <div className="flex min-h-screen flex-col">
         <Navbar sticky={false} />
-        <div className={SHELL_OUTER_CLS}>
+        <div className={`${SHELL_OUTER_CLS} flex-1`}>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -465,11 +518,42 @@ export default function PoolPage() {
             </div>
           </motion.div>
         </div>
+        <Footer />
       </div>
     );
   }
 
-  const pendingCount = pool.numContributors - contributions.length;
+  // Unified contributor list. For missed pools we render the snapshot (so
+  // entries that have refunded since are still visible), tagged PAID or
+  // REFUNDED based on whether the on-chain contribution PDA still exists.
+  type DisplayContributor = {
+    contributor: string;
+    contributionPda: string;
+    amount: number;
+    status: "paid" | "refunded";
+    txSig?: string;
+  };
+  const onchainPdaSet = new Set(contributions.map((c) => c.publicKey.toBase58()));
+  const displayContributors: DisplayContributor[] =
+    missed && snapshot && snapshot.contributors.length > 0
+      ? snapshot.contributors.map((c) => ({
+          contributor: c.contributor,
+          contributionPda: c.contributionPda,
+          amount: c.amount,
+          status: onchainPdaSet.has(c.contributionPda) ? "paid" : "refunded",
+          txSig: txSigs[c.contributionPda],
+        }))
+      : contributions.map((c) => ({
+          contributor: c.account.contributor.toBase58(),
+          contributionPda: c.publicKey.toBase58(),
+          amount: c.account.amount.toNumber() / 1_000_000,
+          status: "paid",
+          txSig: txSigs[c.publicKey.toBase58()],
+        }));
+  const paidEverCount = displayContributors.length;
+  const pendingCount = missed
+    ? 0
+    : Math.max(0, pool.numContributors - contributions.length);
   const timeLeftSec = pool.deadline.toNumber() - now;
   const urgent = !isExpired && timeLeftSec > 0 && timeLeftSec < 86_400;
   const raisedGrowing = progressPct > 0;
@@ -487,10 +571,10 @@ export default function PoolPage() {
     : "border-[color:var(--border)]";
 
   return (
-    <div className="min-h-screen">
+    <div className="flex min-h-screen flex-col">
       <Navbar sticky={false} />
 
-      <div className={SHELL_OUTER_CLS}>
+      <div className={`${SHELL_OUTER_CLS} flex-1`}>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -498,7 +582,7 @@ export default function PoolPage() {
           className={shellCardCls}
         >
           <GoldBoltsCelebration active={celebrating} />
-          <div className="relative z-0 p-5 sm:p-6 lg:p-8">
+          <div className="relative z-0 p-4 sm:p-6 lg:p-8">
 
             {/* Header */}
             <div className="mb-7">
@@ -517,9 +601,9 @@ export default function PoolPage() {
                   ? "Expired pool"
                   : "Active pool"}
               </p>
-              <h1 className="mb-3 text-[clamp(36px,5vw,56px)] font-bold leading-[1.0] tracking-[-0.02em] text-cream">
+              <h1 className="mb-3 text-[clamp(28px,6vw,56px)] font-bold leading-[1.0] tracking-[-0.02em] text-cream">
                 {pool.reason.split(" ").slice(0, -1).join(" ")}{" "}
-                <em className="font-[family-name:var(--font-playfair)] font-bold italic text-gold drop-shadow-[0_0_30px_rgba(232,181,71,0.35)]">
+                <em className="font-[family-name:var(--font-serif)] font-bold italic text-gold drop-shadow-[0_0_30px_rgba(232,181,71,0.35)]">
                   {pool.reason.split(" ").slice(-1)[0]}
                 </em>
               </h1>
@@ -545,12 +629,12 @@ export default function PoolPage() {
               ].map((s) => (
                 <div
                   key={s.key}
-                  className={`relative rounded-2xl border bg-white/[0.05] px-5 py-4 transition-shadow ${s.className}`}
+                  className={`relative rounded-2xl border bg-white/[0.05] px-4 py-3 transition-shadow sm:px-5 sm:py-4 ${s.className}`}
                 >
-                  <p className={`${monoCls} mb-1.5 text-[10px] uppercase tracking-[0.16em] text-cream-muted/85`}>
+                  <p className={`${monoCls} mb-1 text-[10px] uppercase tracking-[0.16em] text-cream-muted/85 sm:mb-1.5`}>
                     {s.label}
                   </p>
-                  <p className={`${monoCls} text-[22px] font-bold leading-none text-gold`}>
+                  <p className={`${monoCls} text-[18px] font-bold leading-none text-gold sm:text-[22px]`}>
                     {s.value}
                     {s.sub && <span className="ml-1 text-[11px] text-cream-muted">{s.sub}</span>}
                   </p>
@@ -562,7 +646,8 @@ export default function PoolPage() {
             <div className={`${statCardCls} mb-5`}>
               <div className="mb-2.5 flex justify-between">
                 <span className="text-[13px] text-cream-muted">
-                  ${remainingUSDC.toLocaleString()} remaining to goal
+                  ${remainingUSDC.toLocaleString()}{" "}
+                  {missed ? "short of goal" : "remaining to goal"}
                 </span>
                 <span className={`${monoCls} text-[13px] font-bold text-gold`}>
                   {Math.round(progressPct)}%
@@ -587,29 +672,32 @@ export default function PoolPage() {
             {/* Contributors */}
             <div className={`${statCardCls} mb-5`}>
               <p className={`${monoCls} mb-4 text-[11px] uppercase tracking-[0.16em] text-cream-muted/85`}>
-                Contributors — {contributions.length} of {pool.numContributors} sent
+                {missed
+                  ? `Contributors — ${paidEverCount} of ${pool.numContributors} paid before deadline`
+                  : `Contributors — ${contributions.length} of ${pool.numContributors} sent`}
               </p>
               <ul className="flex flex-col divide-y divide-[rgba(255,255,255,0.06)]">
-                {contributions.map((c) => {
-                  const addr = c.account.contributor.toBase58();
+                {displayContributors.map((c) => {
+                  const addr = c.contributor;
                   const initials = addr.slice(0, 2).toUpperCase();
-                  const sig = txSigs[c.publicKey.toBase58()];
+                  const sig = c.txSig;
                   const isMe = wallet.publicKey?.toBase58() === addr;
+                  const isRefunded = c.status === "refunded";
                   return (
                     <li
-                      key={addr}
+                      key={c.contributionPda}
                       className={`flex items-center gap-3 px-3 py-3 -mx-3 rounded-lg transition-colors first:pt-0 ${
                         isMe
                           ? "bg-gold/[0.14] ring-1 ring-gold/30 hover:bg-gold/[0.18]"
                           : "hover:bg-white/[0.02]"
-                      }`}
+                      } ${isRefunded ? "opacity-80" : ""}`}
                     >
                       <div className={`${monoCls} flex size-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold text-gold ${
                         isMe ? "bg-gold/45 ring-1 ring-gold/50" : "bg-gold/[0.18]"
                       }`}>
                         {initials}
                       </div>
-                      <div className="flex-1">
+                      <div className="min-w-0 flex-1">
                         <p className="text-[13px] font-medium text-cream">
                           {truncate(addr)}
                           {isMe && (
@@ -618,8 +706,8 @@ export default function PoolPage() {
                             </span>
                           )}
                         </p>
-                        <p className={`${monoCls} flex items-center gap-2 text-[11px] text-cream-muted`}>
-                          <span>${c.account.amount.toNumber() / 1_000_000} USDC</span>
+                        <p className={`${monoCls} flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-cream-muted`}>
+                          <span>${c.amount} USDC</span>
                           {sig && (
                             <>
                               <span className="text-cream-muted/40">·</span>
@@ -629,13 +717,15 @@ export default function PoolPage() {
                                 rel="noopener noreferrer"
                                 className="text-gold/70 transition-colors hover:text-gold"
                               >
-                                View tx ↗
+                                {isRefunded ? "View refund tx ↗" : "View tx ↗"}
                               </a>
                             </>
                           )}
                         </p>
                       </div>
-                      <span className={`${monoCls} ${PAID_PILL}`}>PAID</span>
+                      <span className={`${monoCls} ${isRefunded ? REFUNDED_PILL : PAID_PILL}`}>
+                        {isRefunded ? "REFUNDED" : "PAID"}
+                      </span>
                     </li>
                   );
                 })}
@@ -673,11 +763,11 @@ export default function PoolPage() {
               </div>
             )}
 
-            {/* Bottom actions */}
-            <div className="flex gap-3">
+            {/* Bottom actions — stack on phones, side-by-side from sm+ */}
+            <div className="flex flex-col gap-3 sm:flex-row">
               <button
                 onClick={copyLink}
-                className="rounded-2xl border border-gold/30 bg-white/[0.03] px-5 py-3.5 text-[14px] font-semibold text-cream transition-all duration-200 hover:border-gold/60 hover:bg-gold/[0.08] hover:text-gold"
+                className="inline-flex min-h-[48px] items-center justify-center rounded-2xl border border-gold/30 bg-white/[0.03] px-5 py-3.5 text-[14px] font-semibold text-cream transition-all duration-200 hover:border-gold/60 hover:bg-gold/[0.08] hover:text-gold"
               >
                 {copied ? "✓ Copied" : "Share link"}
               </button>
@@ -694,6 +784,8 @@ export default function PoolPage() {
           </div>
         </motion.div>
       </div>
+
+      <Footer />
     </div>
   );
 }

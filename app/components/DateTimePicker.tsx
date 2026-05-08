@@ -55,7 +55,9 @@ export default function DateTimePicker({
   error = false,
 }: Props) {
   const [open, setOpen] = useState(false);
-  const [placeAbove, setPlaceAbove] = useState(false);
+  // Default to opening above the trigger; keeps the deadline field + its
+  // expiration hint + the submit button visible while picking.
+  const [placeAbove, setPlaceAbove] = useState(true);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   // Seed internal state from the parent value, falling back to a sensible default
@@ -70,14 +72,11 @@ export default function DateTimePicker({
   const [hour, setHour] = useState(seed.hour);
   const [minute, setMinute] = useState(seed.minute);
 
-  // When opening, decide whether to flip above the trigger if there's no
-  // room for the popover below the trigger in the viewport.
+  // Always open upward — keeps the deadline field + its label / expiration
+  // hint / submit button visible while picking.
   useEffect(() => {
-    if (!open || !wrapRef.current) return;
-    const rect = wrapRef.current.getBoundingClientRect();
-    const below = window.innerHeight - rect.bottom;
-    const above = rect.top;
-    setPlaceAbove(below < POPOVER_H && above > below);
+    if (!open) return;
+    setPlaceAbove(true);
   }, [open]);
 
   // Outside click + Escape closes the popover.
@@ -119,7 +118,7 @@ export default function DateTimePicker({
 
   // Shared classNames for the two Select fields in the time row
   const timeTriggerCls =
-    "h-8 min-w-[58px] rounded-md border border-[color:var(--border)] bg-[color:var(--red-input)] px-2.5 py-0 font-[family-name:var(--font-mono-jb)] text-[12px] text-cream gap-1 transition-colors hover:bg-[color:var(--red-input)]/85 focus-visible:border-gold/55 focus-visible:ring-2 focus-visible:ring-gold/25 [&>span]:flex-1 [&>span]:text-center";
+    "h-11 min-w-[64px] rounded-md border border-[color:var(--border)] bg-[color:var(--red-input)] px-2.5 py-0 font-[family-name:var(--font-mono-jb)] text-[14px] text-cream gap-1 transition-colors hover:bg-[color:var(--red-input)]/85 focus-visible:border-gold/55 focus-visible:ring-2 focus-visible:ring-gold/25 [&>span]:flex-1 [&>span]:text-center sm:h-8 sm:min-w-[58px] sm:text-[12px]";
   const timeContentCls =
     "max-h-56 rounded-lg border border-[color:var(--border)] bg-[color:var(--red-card)] py-1 font-[family-name:var(--font-mono-jb)] text-[12px] shadow-[0_18px_40px_-18px_rgba(0,0,0,0.6)]";
   const timeItemCls =
@@ -220,7 +219,7 @@ export default function DateTimePicker({
         aria-haspopup="dialog"
         aria-invalid={error || undefined}
         className={
-          "w-full rounded-xl border bg-white/[0.04] px-4 py-3 text-left text-[15px] outline-none transition-all duration-200 focus:bg-white/[0.06] focus:ring-2 " +
+          "w-full min-h-[44px] rounded-xl border bg-white/[0.04] px-4 py-3 text-left text-[16px] outline-none transition-all duration-200 focus:bg-white/[0.06] focus:ring-2 sm:text-[15px] " +
           (error
             ? "border-[color:var(--destructive)]/70 focus:border-[color:var(--destructive)] focus:ring-[color:var(--destructive)]/20 "
             : "border-[color:var(--border)] focus:border-gold/55 focus:ring-gold/20 ") +
@@ -230,14 +229,26 @@ export default function DateTimePicker({
         {display ?? placeholder}
       </button>
 
-      {/* Popover — flips above the trigger when there's no room below */}
+      {/* Mobile-only backdrop — closes the bottom sheet on tap. */}
+      {open && (
+        <div
+          aria-hidden
+          onClick={() => setOpen(false)}
+          className="fixed inset-0 z-40 bg-black/55 sm:hidden"
+        />
+      )}
+
+      {/* Popover — bottom sheet on mobile, anchored above/below the trigger
+          on tablet+. Flip-up logic only applies once we're sm and above. */}
       {open && (
         <div
           role="dialog"
           className={
-            "absolute left-0 right-0 z-50 overflow-hidden rounded-xl border border-[color:var(--border)] bg-[color:var(--red-card)] shadow-[0_24px_60px_-24px_rgba(0,0,0,0.55)] " +
-            (placeAbove ? "bottom-full mb-2" : "top-full mt-2")
+            "fixed inset-x-0 bottom-0 z-50 overflow-hidden rounded-t-2xl border border-[color:var(--border)] bg-[color:var(--red-card)] shadow-[0_-24px_60px_-24px_rgba(0,0,0,0.7)] " +
+            "sm:absolute sm:inset-x-auto sm:left-0 sm:right-0 sm:rounded-xl sm:shadow-[0_24px_60px_-24px_rgba(0,0,0,0.55)] " +
+            (placeAbove ? "sm:bottom-full sm:mb-2 sm:top-auto" : "sm:top-full sm:mt-2 sm:bottom-auto")
           }
+          style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
         >
           {/* Calendar */}
           <div className="px-2 pt-2 pb-1">
@@ -306,7 +317,7 @@ export default function DateTimePicker({
               type="button"
               onClick={() => setOpen(false)}
               disabled={!date}
-              className="rounded-md bg-gold px-3 py-1.5 text-[11px] font-bold text-[#1a0e0e] transition-all hover:scale-[1.02] disabled:cursor-not-allowed disabled:bg-gold/40 disabled:hover:scale-100"
+              className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-gold px-4 py-1.5 text-[13px] font-bold text-[#1a0e0e] transition-all hover:scale-[1.02] disabled:cursor-not-allowed disabled:bg-gold/40 disabled:hover:scale-100 sm:min-h-0 sm:px-3 sm:text-[11px]"
             >
               Done
             </button>

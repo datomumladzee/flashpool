@@ -72,11 +72,11 @@ export default function ErrorBanner({
           strokeWidth={2}
         />
         <div className="flex-1 min-w-0">
-          <p className="text-[13px] font-bold leading-tight text-cream">
+          <p className="text-[14px] font-bold leading-tight text-cream">
             {title}
           </p>
           {message && (
-            <p className="mt-1 text-[12px] leading-[1.5] text-cream-muted">
+            <p className="mt-1 text-[14px] leading-[1.5] text-cream-muted">
               {message}
             </p>
           )}
@@ -86,7 +86,7 @@ export default function ErrorBanner({
             type="button"
             onClick={onDismiss}
             aria-label="Dismiss"
-            className="text-cream-muted/70 transition-colors hover:text-cream"
+            className="-mr-1 -mt-1 inline-flex size-8 shrink-0 items-center justify-center rounded-full text-cream-muted/70 transition-colors hover:bg-white/[0.06] hover:text-cream sm:size-7"
           >
             <X className="size-4" strokeWidth={2} />
           </button>
@@ -102,7 +102,7 @@ export default function ErrorBanner({
                   href={action.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 rounded-lg border border-gold/40 bg-gold/[0.12] px-3 py-1 text-[12px] font-bold text-gold transition-colors hover:bg-gold/[0.2]"
+                  className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-gold/40 bg-gold/[0.12] px-3 py-1.5 text-[13px] font-bold text-gold transition-colors hover:bg-gold/[0.2]"
                 >
                   {action.label} ↗
                 </a>
@@ -110,7 +110,7 @@ export default function ErrorBanner({
                 <button
                   type="button"
                   onClick={action.onClick}
-                  className="inline-flex items-center gap-1 rounded-lg border border-gold/40 bg-gold/[0.12] px-3 py-1 text-[12px] font-bold text-gold transition-colors hover:bg-gold/[0.2]"
+                  className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-gold/40 bg-gold/[0.12] px-3 py-1.5 text-[13px] font-bold text-gold transition-colors hover:bg-gold/[0.2]"
                 >
                   {action.label}
                 </button>

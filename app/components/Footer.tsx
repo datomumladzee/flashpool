@@ -70,18 +70,22 @@ const LINKS: SocialLink[] = [
 
 export default function Footer() {
   return (
-    <footer className="border-t border-[color:var(--border)] px-6 py-8 sm:px-8 lg:px-12">
+    <footer
+      id="site-footer"
+      className="border-t border-[color:var(--border)] px-4 py-6 sm:px-8 sm:py-8 lg:px-12"
+      style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
+    >
       <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-5 sm:flex-row">
-        <p className="font-[family-name:var(--font-mono-jb)] text-[12px] tracking-wide text-cream-muted/80">
+        <p className="text-center font-[family-name:var(--font-mono-jb)] text-[13px] font-semibold tracking-wide text-cream-muted sm:text-[14px]">
           <span aria-hidden className="mr-1.5 text-gold">
             ⚡
           </span>
           FlashPool
-          <span className="mx-2 text-cream-muted/40">·</span>
+          <span className="mx-2 text-cream-muted/50">·</span>
           Solana Devnet
         </p>
 
-        <ul className="flex items-center gap-1.5">
+        <ul className="flex items-center gap-3 sm:gap-5">
           {LINKS.map(({ label, href, Icon }) => (
             <li key={label}>
               <a
@@ -90,9 +94,9 @@ export default function Footer() {
                 rel="noopener noreferrer"
                 aria-label={label}
                 title={label}
-                className="inline-flex size-9 items-center justify-center rounded-lg text-cream-muted/80 transition-all duration-200 hover:bg-white/[0.06] hover:text-gold"
+                className="inline-flex size-12 items-center justify-center rounded-full border-2 border-cream-muted/30 text-cream-muted/80 transition-all duration-200 hover:border-gold/70 hover:bg-white/[0.06] hover:text-gold sm:size-15"
               >
-                <Icon className="size-[17px]" />
+                <Icon className="size-[20px] sm:size-[24px]" />
               </a>
             </li>
           ))}

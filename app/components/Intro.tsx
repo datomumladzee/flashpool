@@ -36,6 +36,7 @@ export default function Intro({ onComplete }: IntroProps) {
               "radial-gradient(ellipse at center, #2a4480 0%, #1f325e 45%, #0d1530 100%)",
           }}
           aria-hidden
+          data-intro-overlay
         >
           {/* Subtle screen shake at the moment of strike */}
           <motion.div

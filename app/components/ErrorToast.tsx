@@ -23,7 +23,14 @@ export default function ErrorToast({
   }, [error, duration, onDismiss]);
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-6 z-[100] flex justify-end px-6">
+    <div
+      className="pointer-events-none fixed inset-x-0 z-[100] flex justify-center px-4 sm:justify-end sm:px-6"
+      style={{
+        bottom: "max(1rem, env(safe-area-inset-bottom))",
+        paddingRight: "max(1rem, env(safe-area-inset-right))",
+        paddingLeft: "max(1rem, env(safe-area-inset-left))",
+      }}
+    >
       <AnimatePresence>
         {error && (
           <motion.div
@@ -32,7 +39,7 @@ export default function ErrorToast({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
             transition={{ duration: 0.25, ease: "easeOut" }}
-            className="pointer-events-auto w-full max-w-sm"
+            className="pointer-events-auto w-full max-w-[calc(100vw-2rem)] sm:max-w-sm"
           >
             <ErrorBanner
               variant={error.level}

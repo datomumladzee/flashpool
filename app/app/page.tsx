@@ -13,15 +13,16 @@ import SectionDivider from "@/components/SectionDivider";
 const SESSION_KEY = "flashpool_intro_seen";
 
 export default function Home() {
-  // Tri-state so neither Intro nor "no Intro" flashes before the
-  // sessionStorage check runs in the effect.
-  const [introState, setIntroState] = useState<"pending" | "playing" | "done">(
-    "pending",
-  );
+  // Default to "playing" so the intro overlay is rendered during SSR — that's
+  // what kills the red-bg flash before hydration. On revisits the inline
+  // script in <head> sets `data-intro-skip` so CSS hides the overlay before
+  // first paint; this effect then unmounts it shortly after hydration.
+  const [introState, setIntroState] = useState<"playing" | "done">("playing");
 
   useEffect(() => {
-    const seen = sessionStorage.getItem(SESSION_KEY) === "1";
-    setIntroState(seen ? "done" : "playing");
+    if (sessionStorage.getItem(SESSION_KEY) === "1") {
+      setIntroState("done");
+    }
   }, []);
 
   const handleIntroComplete = () => {

@@ -8,10 +8,13 @@ import { PublicKey, SystemProgram } from "@solana/web3.js";
 import { motion } from "framer-motion";
 import { AlertCircle } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
 import DateTimePicker from "@/components/DateTimePicker";
 import PoolOrbit from "@/components/PoolOrbit";
 import ErrorBanner from "@/components/ErrorBanner";
 import { translateError, type TranslatedError } from "@/lib/errors";
+import { recordCreatedPool } from "@/lib/history";
+import { formatRelativeTime } from "@/lib/time";
 import idl from "@/lib/idl.json";
 
 type FieldName = "reason" | "numContributors" | "amountPerPerson" | "deadline";
@@ -119,16 +122,13 @@ export default function CreatePage() {
 
   const goal = numContributors * amountPerPerson;
 
-  // Friendly "expires in X" preview under the deadline picker.
+  // Friendly "expires in X" preview under the deadline picker. Falls through
+  // to minutes / "<1m" when the deadline is close, instead of rounding to "0h".
   const expiresIn = useMemo(() => {
     if (!deadline) return null;
-    const diff = new Date(deadline).getTime() - Date.now();
-    if (diff <= 0) return { text: "Already passed", warn: true };
-    const days = Math.floor(diff / 86_400_000);
-    const hours = Math.floor((diff % 86_400_000) / 3_600_000);
-    const text =
-      days > 0 ? `${days}d ${hours}h from now` : `${hours}h from now`;
-    return { text, warn: false };
+    const date = new Date(deadline);
+    const passed = date.getTime() <= Date.now();
+    return { text: formatRelativeTime(date), warn: passed };
   }, [deadline]);
 
   const program = useMemo(() => {
@@ -204,6 +204,7 @@ export default function CreatePage() {
         .rpc();
 
       setStatus("success");
+      recordCreatedPool(poolPda.toBase58());
       router.push(`/pool/${poolPda.toBase58()}`);
     } catch (err: unknown) {
       const translated = translateError(err);
@@ -218,7 +219,7 @@ export default function CreatePage() {
   const labelCls =
     "mb-2 flex items-center gap-2 font-[family-name:var(--font-mono-jb)] text-[11px] uppercase tracking-[0.14em] text-cream-muted";
   const inputBaseCls =
-    "w-full rounded-xl border bg-white/[0.04] px-4 py-3 text-[15px] text-cream outline-none transition-all duration-200 placeholder:text-cream-muted/50 focus:bg-white/[0.06] focus:ring-2";
+    "w-full min-h-[44px] rounded-xl border bg-white/[0.04] px-4 py-3 text-[16px] text-cream outline-none transition-all duration-200 placeholder:text-cream-muted/50 focus:bg-white/[0.06] focus:ring-2 sm:text-[15px]";
   const inputOkCls =
     "border-[color:var(--border)] focus:border-gold/55 focus:ring-gold/20";
   const inputErrCls =
@@ -235,32 +236,32 @@ export default function CreatePage() {
     `${wrapperBaseCls} ${err ? wrapperErrCls : wrapperOkCls}`;
 
   return (
-    <div className="min-h-screen">
+    <div className="flex min-h-screen flex-col">
       <Navbar sticky={false} />
 
-      <div className="flex items-center justify-center px-6 py-12 sm:px-8 md:py-16 lg:px-12">
+      <div className="flex flex-1 items-center justify-center px-4 py-8 sm:px-6 sm:py-12 md:px-8 md:py-16 lg:px-12">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.55, ease: "easeOut" }}
-          className="grid w-full max-w-5xl grid-cols-1 overflow-hidden rounded-3xl border border-[color:var(--border)] bg-[color:var(--red-card)] shadow-[0_30px_80px_-30px_rgba(0,0,0,0.55)] md:grid-cols-2"
+          className="grid w-full max-w-5xl grid-cols-1 overflow-hidden rounded-3xl border border-[color:var(--border)] bg-[color:var(--red-card)] shadow-[0_30px_80px_-30px_rgba(0,0,0,0.55)] lg:grid-cols-2"
         >
           {/* ── LEFT COLUMN ── narrative + live preview */}
-          <div className="flex flex-col justify-between gap-12 p-10 lg:p-12">
+          <div className="flex flex-col justify-between gap-6 p-4 sm:gap-12 sm:p-10 lg:p-12">
             <div>
-              <p className="mb-6 text-center font-[family-name:var(--font-mono-jb)] text-[11px] uppercase tracking-[0.22em] text-gold">
+              <p className="mb-3 text-center font-[family-name:var(--font-mono-jb)] text-[11px] uppercase tracking-[0.22em] text-gold sm:mb-6">
                 Protocol V1.0
               </p>
-              <h1 className="mb-5 text-center text-[clamp(32px,3.4vw,44px)] font-bold leading-[1.05] tracking-[-0.012em] text-cream">
+              <h1 className="mb-3 text-center text-[clamp(26px,6vw,44px)] font-bold leading-[1.05] tracking-[-0.012em] text-cream sm:mb-5">
                 Create a{" "}
-                <em className="font-[family-name:var(--font-playfair)] font-bold italic text-gold">
+                <em className="font-[family-name:var(--font-serif)] font-bold italic text-gold">
                   Pool
                 </em>
               </h1>
-              <p className="text-center text-[15px] leading-[1.65] text-cream-muted">
+              <p className="text-center text-[14px] leading-[1.6] text-cream-muted sm:text-[15px] sm:leading-[1.65]">
                 Deploy a transparent, autonomous smart contract to collect
                 funds. If the goal isn&apos;t met by the deadline, every
-                contributor refunds themselves automatically.
+                contributor refunds themselves with a single transaction.
               </p>
             </div>
 
@@ -268,7 +269,7 @@ export default function CreatePage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.6, ease: "easeOut", delay: 0.25 }}
-              className="mx-auto aspect-square w-full max-w-[360px]"
+              className="mx-auto aspect-square w-full max-w-[220px] sm:max-w-[280px] lg:max-w-[360px]"
             >
               <PoolOrbit
                 nodeCount={Math.max(1, numContributors || 1)}
@@ -278,7 +279,7 @@ export default function CreatePage() {
 
             <div>
               {/* Live preview pills */}
-              <div className="mb-5 grid grid-cols-3 gap-3">
+              <div className="mb-5 grid grid-cols-3 gap-2 sm:gap-3">
                 {[
                   { label: "Goal", value: `$${goal.toLocaleString()}` },
                   { label: "People", value: String(numContributors) },
@@ -286,19 +287,19 @@ export default function CreatePage() {
                 ].map((pill) => (
                   <div
                     key={pill.label}
-                    className="rounded-xl border border-[color:var(--border)] bg-black/25 px-3 py-3 text-center"
+                    className="rounded-xl border border-[color:var(--border)] bg-black/25 px-2 py-2.5 text-center sm:px-3 sm:py-3"
                   >
                     <div className="mb-1 font-[family-name:var(--font-mono-jb)] text-[9px] uppercase tracking-[0.16em] text-cream-muted/80">
                       {pill.label}
                     </div>
-                    <div className="font-[family-name:var(--font-mono-jb)] text-[15px] font-bold text-gold">
+                    <div className="font-[family-name:var(--font-mono-jb)] text-[13px] font-bold text-gold sm:text-[15px]">
                       {pill.value}
                     </div>
                   </div>
                 ))}
               </div>
 
-              <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 font-[family-name:var(--font-mono-jb)] text-[14px] tracking-wide text-cream-muted/85">
+              <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 font-[family-name:var(--font-mono-jb)] text-[12px] tracking-wide text-cream-muted/85 sm:text-[14px]">
                 <span className="relative flex size-1.5">
                   <span className="absolute inset-0 animate-ping rounded-full bg-gold opacity-60" />
                   <span className="relative size-1.5 rounded-full bg-gold" />
@@ -311,7 +312,7 @@ export default function CreatePage() {
           </div>
 
           {/* ── RIGHT COLUMN ── form */}
-          <div className="border-t border-[color:var(--border)] bg-black/15 p-10 md:border-t-0 md:border-l lg:p-12">
+          <div className="border-t border-[color:var(--border)] bg-black/15 p-4 sm:p-10 lg:border-t-0 lg:border-l lg:p-12">
             <form
               onSubmit={handleSubmit}
               noValidate
@@ -326,7 +327,7 @@ export default function CreatePage() {
                   id="fp-reason"
                   ref={reasonRef}
                   type="text"
-                  placeholder="Trip to Rome"
+                  placeholder="What are you collecting for?"
                   value={reason}
                   onChange={(e) => {
                     setReason(e.target.value);
@@ -346,7 +347,7 @@ export default function CreatePage() {
                 <label htmlFor="fp-contributors" className={labelCls}>
                   <span className="text-gold">02</span> Contributors
                 </label>
-                <div className={wrapperCls(errors.numContributors)}>
+                <div className={`${wrapperCls(errors.numContributors)} min-h-[44px]`}>
                   <button
                     type="button"
                     onClick={() => {
@@ -354,7 +355,7 @@ export default function CreatePage() {
                       clearError("numContributors");
                     }}
                     aria-label="Decrease contributors"
-                    className="px-4 text-[20px] leading-none text-gold transition-colors hover:bg-gold/10"
+                    className="inline-flex min-w-[44px] items-center justify-center px-4 text-[22px] leading-none text-gold transition-colors hover:bg-gold/10"
                   >
                     −
                   </button>
@@ -374,11 +375,8 @@ export default function CreatePage() {
                     aria-describedby={
                       errors.numContributors ? "fp-contributors-error" : undefined
                     }
-                    className="flex-1 bg-transparent py-3 text-center text-[15px] text-cream outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    className="flex-1 bg-transparent py-3 text-center text-[16px] text-cream outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none sm:text-[15px]"
                   />
-                  <span className="self-center pr-3 font-[family-name:var(--font-mono-jb)] text-[11px] text-cream-muted">
-
-                  </span>
                   <button
                     type="button"
                     onClick={() => {
@@ -386,7 +384,7 @@ export default function CreatePage() {
                       clearError("numContributors");
                     }}
                     aria-label="Increase contributors"
-                    className="px-4 text-[20px] leading-none text-gold transition-colors hover:bg-gold/10"
+                    className="inline-flex min-w-[44px] items-center justify-center px-4 text-[22px] leading-none text-gold transition-colors hover:bg-gold/10"
                   >
                     +
                   </button>
@@ -402,7 +400,7 @@ export default function CreatePage() {
                 <label htmlFor="fp-amount" className={labelCls}>
                   <span className="text-gold">03</span> Per person (USDC)
                 </label>
-                <div className={wrapperCls(errors.amountPerPerson)}>
+                <div className={`${wrapperCls(errors.amountPerPerson)} min-h-[44px]`}>
                   <span className="self-center pl-4 font-[family-name:var(--font-mono-jb)] text-[14px] text-cream-muted">
                     $
                   </span>
@@ -410,6 +408,7 @@ export default function CreatePage() {
                     id="fp-amount"
                     ref={amountPerPersonRef}
                     type="number"
+                    inputMode="decimal"
                     min={1}
                     value={amountPerPerson}
                     onChange={(e) => {
@@ -421,7 +420,7 @@ export default function CreatePage() {
                     aria-describedby={
                       errors.amountPerPerson ? "fp-amount-error" : undefined
                     }
-                    className="flex-1 bg-transparent px-3 py-3 text-[15px] text-cream outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    className="flex-1 bg-transparent px-3 py-3 text-[16px] text-cream outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none sm:text-[15px]"
                   />
                   <span className="self-center pr-4 font-[family-name:var(--font-mono-jb)] text-[11px] text-cream-muted">
                     USDC
@@ -463,8 +462,9 @@ export default function CreatePage() {
                       expiresIn.warn ? "text-[#ff6b6b]" : "text-cream-muted/85"
                     }`}
                   >
-                    {expiresIn.warn ? "⚠ " : "→ "}
-                    Expires {expiresIn.text}
+                    {expiresIn.warn
+                      ? `⚠ ${expiresIn.text}`
+                      : `→ Expires ${expiresIn.text}`}
                   </p>
                 )}
               </div>
@@ -491,7 +491,7 @@ export default function CreatePage() {
               <button
                 type="submit"
                 disabled={!wallet.publicKey || busy}
-                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gold px-6 py-4 text-[16px] font-bold text-[#1a0e0e] shadow-[0_18px_40px_-16px_rgba(232,181,71,0.7)] transition-all duration-300 hover:scale-[1.01] hover:shadow-[0_26px_60px_-14px_rgba(232,181,71,0.95)] disabled:cursor-not-allowed disabled:bg-gold/40 disabled:shadow-none disabled:hover:scale-100"
+                className="mt-2 inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-gold px-6 py-4 text-[16px] font-bold text-[#1a0e0e] shadow-[0_18px_40px_-16px_rgba(232,181,71,0.7)] transition-all duration-300 hover:scale-[1.01] hover:shadow-[0_26px_60px_-14px_rgba(232,181,71,0.95)] disabled:cursor-not-allowed disabled:bg-gold/40 disabled:shadow-none disabled:hover:scale-100"
               >
                 <span aria-hidden className="text-[18px] leading-none">
                   ⚡
@@ -502,12 +502,14 @@ export default function CreatePage() {
                   ? "Sending transaction..."
                   : !wallet.publicKey
                   ? "Connect wallet first"
-                  : "Initialize Pool"}
+                  : "Create a Pool"}
               </button>
             </form>
           </div>
         </motion.div>
       </div>
+
+      <Footer />
     </div>
   );
 }

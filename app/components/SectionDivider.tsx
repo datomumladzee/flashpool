@@ -9,7 +9,7 @@ export default function SectionDivider() {
   return (
     <div
       aria-hidden
-      className="relative flex h-36 items-center justify-center overflow-hidden"
+      className="relative flex h-20 items-center justify-center overflow-hidden sm:h-28 lg:h-36"
     >
       {/* Wrapper that defines the seam's width — also the track for the node */}
       <div className="relative h-[4px] w-[76%] max-w-5xl">
