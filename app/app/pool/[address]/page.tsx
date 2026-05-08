@@ -15,6 +15,7 @@ import { Lock, Zap } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import ErrorBanner from "@/components/ErrorBanner";
+import ConfirmModal from "@/components/ConfirmModal";
 import { translateError, type TranslatedError } from "@/lib/errors";
 import { recordContribution, getCreatorContributes } from "@/lib/history";
 import {
@@ -182,6 +183,7 @@ export default function PoolPage() {
   const [actionError,   setActionError]   = useState<TranslatedError | null>(null);
   const [copied,        setCopied]        = useState(false);
   const [now,           setNow]           = useState(Math.floor(Date.now() / 1000));
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
 
   const poolPda = useMemo(() => {
     try { return new PublicKey(address); } catch { return null; }
@@ -1011,8 +1013,8 @@ export default function PoolPage() {
             {/* Creator-only secondary action: open the early-cancel vote.
                 Shown only when the pool is genuinely active — pre-deadline,
                 pre-goal, no cancel pending, not already closed. Confirmation
-                handled inline via window.confirm because the rest of the
-                page doesn't have a modal pattern yet. */}
+                handled by ConfirmModal so it matches the rest of the brand
+                instead of using the unstylable native confirm() dialog. */}
             {isCreator &&
               !cancelRequested &&
               !closedEarly &&
@@ -1023,15 +1025,7 @@ export default function PoolPage() {
                   <button
                     type="button"
                     disabled={txStatus === "signing" || txStatus === "pending"}
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          "This starts a vote to close the pool. Two-thirds of contributors must approve before refunds open. New contributions will be paused. You can't undo this.",
-                        )
-                      ) {
-                        void requestCancel();
-                      }
-                    }}
+                    onClick={() => setCloseConfirmOpen(true)}
                     className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-[color:var(--destructive)]/40 bg-[color:var(--destructive)]/[0.06] px-5 py-3 text-[13px] font-semibold text-[color:var(--destructive)] transition-all duration-200 hover:border-[color:var(--destructive)]/65 hover:bg-[color:var(--destructive)]/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Request to close pool early
@@ -1060,6 +1054,20 @@ export default function PoolPage() {
           </div>
         </motion.div>
       </div>
+
+      <ConfirmModal
+        open={closeConfirmOpen}
+        onCancel={() => setCloseConfirmOpen(false)}
+        onConfirm={() => {
+          setCloseConfirmOpen(false);
+          void requestCancel();
+        }}
+        title="Close this pool?"
+        message="This starts a vote — two-thirds of contributors must approve before refunds open. New contributions will be paused. You can't undo this."
+        confirmLabel="Request close"
+        cancelLabel="Cancel"
+        variant="warning"
+      />
 
       <Footer />
     </div>
