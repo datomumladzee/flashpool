@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X } from "lucide-react";
@@ -247,6 +248,7 @@ function CenterLogo() {
 
 export default function Navbar({ sticky = true }: { sticky?: boolean } = {}) {
   const pathname = usePathname();
+  const { connected } = useWallet();
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -303,7 +305,7 @@ export default function Navbar({ sticky = true }: { sticky?: boolean } = {}) {
             Create
           </NavLink>
           <NavLink href="/history" active={pathname === "/history"}>
-            Past Pools
+            Your Pools
           </NavLink>
         </div>
 
@@ -322,12 +324,16 @@ export default function Navbar({ sticky = true }: { sticky?: boolean } = {}) {
             <FooterLink />
           </div>
           <div className="fp-wallet-trigger">
-            {/* Two children: short label on phones, full label sm+. The
-                wallet adapter ignores children once connected and shows the
-                truncated address — same on every breakpoint. */}
+            {/* Children override the adapter's state label entirely, so only
+                pass them when disconnected — once connected we let the adapter
+                render the truncated address itself. */}
             <WalletMultiButton>
-              <span className="sm:hidden">Connect</span>
-              <span className="hidden sm:inline">Connect Wallet</span>
+              {connected ? undefined : (
+                <>
+                  <span className="sm:hidden">Connect</span>
+                  <span className="hidden sm:inline">Connect Wallet</span>
+                </>
+              )}
             </WalletMultiButton>
           </div>
         </div>

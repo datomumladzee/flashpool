@@ -16,7 +16,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import ErrorBanner from "@/components/ErrorBanner";
 import { translateError, type TranslatedError } from "@/lib/errors";
-import { recordContribution } from "@/lib/history";
+import { recordContribution, getCreatorContributes } from "@/lib/history";
 import {
   savePoolSnapshot,
   getPoolSnapshot,
@@ -53,6 +53,10 @@ const PENDING_PILL =
   "rounded-full border border-[color:var(--border)] bg-white/[0.04] px-2.5 py-0.5 text-[10px] font-bold tracking-[0.08em] text-cream-muted";
 const REFUNDED_PILL =
   "rounded-full border border-[color:var(--destructive)]/40 bg-[color:var(--destructive)]/12 px-2.5 py-0.5 text-[10px] font-bold tracking-[0.08em] text-[color:var(--destructive)]";
+// Gold CREATOR badge — left of the PAID/PENDING pill on the creator's row.
+// Gold over green clashes less than green-on-green when the creator has paid.
+const CREATOR_PILL =
+  "rounded-full border border-gold/45 bg-gold/[0.08] px-2.5 py-0.5 text-[10px] font-bold tracking-[0.08em] text-gold";
 
 type Bolt = { id: number; left: number; delay: number; size: number; rotate: number };
 function generateBolts(count: number): Bolt[] {
@@ -449,6 +453,26 @@ export default function PoolPage() {
       <div className={infoBadgeCls}>Pool expired</div>
     );
 
+    // Creator who's already paid — show the same confirmation as any other
+    // contributor. (Checked before the catch-all isCreator branch so the
+    // "Waiting for contributions..." state doesn't swallow it.)
+    if (isCreator && hasContributed) return (
+      <div className={`${infoBadgeCls} border-gold/40 bg-gold/[0.08] text-gold`}>
+        ✓ You contributed {amountUSDC} USDC
+      </div>
+    );
+
+    // Creator who opted to be one of the N contributors but hasn't paid yet.
+    // Surface the Contribute button instead of the passive "waiting" state so
+    // they can pay their share. The on-chain program permits this — there's
+    // no creator-equality check on contribute().
+    if (isCreator && creatorContributesFlag === true) return (
+      <button onClick={contribute} disabled={busy} className={goldBtnCls}>
+        <span aria-hidden className="text-[18px] leading-none">⚡</span>
+        {label ?? `Contribute your share — ${amountUSDC} USDC →`}
+      </button>
+    );
+
     if (isCreator) return (
       <div className={infoBadgeCls}>Waiting for contributions...</div>
     );
@@ -530,11 +554,13 @@ export default function PoolPage() {
     contributor: string;
     contributionPda: string;
     amount: number;
-    status: "paid" | "refunded";
+    status: "paid" | "refunded" | "pending";
     txSig?: string;
+    isCreator?: boolean;
   };
   const onchainPdaSet = new Set(contributions.map((c) => c.publicKey.toBase58()));
-  const displayContributors: DisplayContributor[] =
+  const creatorAddr = pool.creator.toBase58();
+  const baseDisplayContributors: DisplayContributor[] =
     missed && snapshot && snapshot.contributors.length > 0
       ? snapshot.contributors.map((c) => ({
           contributor: c.contributor,
@@ -542,6 +568,7 @@ export default function PoolPage() {
           amount: c.amount,
           status: onchainPdaSet.has(c.contributionPda) ? "paid" : "refunded",
           txSig: txSigs[c.contributionPda],
+          isCreator: c.contributor === creatorAddr,
         }))
       : contributions.map((c) => ({
           contributor: c.account.contributor.toBase58(),
@@ -549,11 +576,58 @@ export default function PoolPage() {
           amount: c.account.amount.toNumber() / 1_000_000,
           status: "paid",
           txSig: txSigs[c.publicKey.toBase58()],
+          isCreator: c.account.contributor.toBase58() === creatorAddr,
         }));
-  const paidEverCount = displayContributors.length;
+
+  // Did the creator opt to be one of the N contributors? Persisted locally
+  // when they used this device to create the pool. Visitors on other devices
+  // get null and we fall back to "is the creator already in the contribution
+  // list" — which still drives the Creator-badge / Created-by header logic.
+  const creatorContributesFlag = poolPda
+    ? getCreatorContributes(poolPda.toBase58())
+    : null;
+  const creatorAlreadyInList = baseDisplayContributors.some(
+    (c) => c.contributor === creatorAddr,
+  );
+  // Synthesize a PENDING creator row only when:
+  //   - we know the creator opted in (locally recorded), AND
+  //   - they haven't paid yet, AND
+  //   - the pool is still active (not missed/expired/closed).
+  const shouldSynthesizeCreatorRow =
+    creatorContributesFlag === true &&
+    !creatorAlreadyInList &&
+    !missed &&
+    !isClosed;
+  const displayContributors: DisplayContributor[] = shouldSynthesizeCreatorRow
+    ? [
+        {
+          contributor: creatorAddr,
+          contributionPda: `creator-pending-${creatorAddr}`,
+          amount: amountUSDC,
+          status: "pending",
+          isCreator: true,
+        },
+        ...baseDisplayContributors,
+      ]
+    : baseDisplayContributors;
+  // Show the "Created by" header line only when the creator definitely opted
+  // out. Three signals: explicit local OFF, OR the creator is not in the
+  // contributor list and we have no local record (best-effort heuristic for
+  // visitors on other devices).
+  const creatorOptedOut =
+    creatorContributesFlag === false ||
+    (creatorContributesFlag === null && !creatorAlreadyInList);
+  const paidEverCount = baseDisplayContributors.filter(
+    (c) => c.status === "paid",
+  ).length;
   const pendingCount = missed
     ? 0
-    : Math.max(0, pool.numContributors - contributions.length);
+    : Math.max(
+        0,
+        pool.numContributors -
+          contributions.length -
+          (shouldSynthesizeCreatorRow ? 1 : 0),
+      );
   const timeLeftSec = pool.deadline.toNumber() - now;
   const urgent = !isExpired && timeLeftSec > 0 && timeLeftSec < 86_400;
   const raisedGrowing = progressPct > 0;
@@ -618,6 +692,17 @@ export default function PoolPage() {
                   View on Solscan ↗
                 </a>
               </div>
+              {/* Created-by line — shown only when the creator opted out of
+                  contributing, since otherwise their address appears in the
+                  contributor list with a Creator badge. */}
+              {creatorOptedOut && (
+                <p
+                  className={`${monoCls} mt-2 text-[11px] text-cream-muted/85`}
+                >
+                  Created by{" "}
+                  <span className="text-gold">{truncate(creatorAddr)}</span>
+                </p>
+              )}
             </div>
 
             {/* Stat cards */}
@@ -683,6 +768,17 @@ export default function PoolPage() {
                   const sig = c.txSig;
                   const isMe = wallet.publicKey?.toBase58() === addr;
                   const isRefunded = c.status === "refunded";
+                  const isPendingCreator = c.status === "pending";
+                  const statusPillCls = isRefunded
+                    ? REFUNDED_PILL
+                    : isPendingCreator
+                    ? PENDING_PILL
+                    : PAID_PILL;
+                  const statusPillLabel = isRefunded
+                    ? "REFUNDED"
+                    : isPendingCreator
+                    ? "PENDING"
+                    : "PAID";
                   return (
                     <li
                       key={c.contributionPda}
@@ -690,7 +786,7 @@ export default function PoolPage() {
                         isMe
                           ? "bg-gold/[0.14] ring-1 ring-gold/30 hover:bg-gold/[0.18]"
                           : "hover:bg-white/[0.02]"
-                      } ${isRefunded ? "opacity-80" : ""}`}
+                      } ${isRefunded ? "opacity-80" : ""} ${isPendingCreator ? "opacity-90" : ""}`}
                     >
                       <div className={`${monoCls} flex size-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold text-gold ${
                         isMe ? "bg-gold/45 ring-1 ring-gold/50" : "bg-gold/[0.18]"
@@ -723,9 +819,16 @@ export default function PoolPage() {
                           )}
                         </p>
                       </div>
-                      <span className={`${monoCls} ${isRefunded ? REFUNDED_PILL : PAID_PILL}`}>
-                        {isRefunded ? "REFUNDED" : "PAID"}
-                      </span>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {c.isCreator && (
+                          <span className={`${monoCls} ${CREATOR_PILL}`}>
+                            CREATOR
+                          </span>
+                        )}
+                        <span className={`${monoCls} ${statusPillCls}`}>
+                          {statusPillLabel}
+                        </span>
+                      </div>
                     </li>
                   );
                 })}

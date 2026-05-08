@@ -53,6 +53,10 @@ export default function CreatePage() {
   const [numContributors, setNumContributors] = useState(5);
   const [amountPerPerson, setAmountPerPerson] = useState(400);
   const [deadline, setDeadline] = useState("");
+  // ON by default — the common case (organizer pays in too) is one click less
+  // work. Toggle counts the creator as one of the N contributors; the on-chain
+  // total goal stays N × per-person regardless.
+  const [creatorContributes, setCreatorContributes] = useState(true);
   const [status, setStatus] = useState<TxStatus>("idle");
   const [actionError, setActionError] = useState<TranslatedError | null>(null);
   const [errors, setErrors] = useState<Partial<Record<FieldName, string>>>({});
@@ -141,6 +145,8 @@ export default function CreatePage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // Toggle ON requires a connected wallet so we can pay the creator's
+    // share. Toggle OFF still requires a wallet to sign create_pool itself.
     if (!program || !wallet.publicKey) return;
 
     // Run full validation; if any field is invalid, surface inline errors
@@ -187,6 +193,13 @@ export default function CreatePage() {
 
       setStatus("pending");
 
+      // TODO: when toggle ON, contribute creator's share atomically with init.
+      // The Anchor program already lets the creator be a contributor (no
+      // creator-equality check on the contribute instruction), so this can be
+      // done as a single Solana transaction with two instructions —
+      // createPool() then contribute() — both signed by the creator. For now
+      // we just persist the boolean flag and the creator can hit Contribute
+      // on the pool page after creation.
       await program.methods
         .createPool(
           reason,
@@ -204,7 +217,7 @@ export default function CreatePage() {
         .rpc();
 
       setStatus("success");
-      recordCreatedPool(poolPda.toBase58());
+      recordCreatedPool(poolPda.toBase58(), creatorContributes);
       router.push(`/pool/${poolPda.toBase58()}`);
     } catch (err: unknown) {
       const translated = translateError(err);
@@ -274,6 +287,12 @@ export default function CreatePage() {
               <PoolOrbit
                 nodeCount={Math.max(1, numContributors || 1)}
                 goalLabel={`$${goal.toLocaleString()}/$${goal.toLocaleString()}`}
+                youIndex={creatorContributes ? 0 : null}
+                youLabel={
+                  wallet.publicKey
+                    ? wallet.publicKey.toBase58().slice(0, 4).toUpperCase()
+                    : "YOU"
+                }
               />
             </motion.div>
 
@@ -281,9 +300,13 @@ export default function CreatePage() {
               {/* Live preview pills */}
               <div className="mb-5 grid grid-cols-3 gap-2 sm:gap-3">
                 {[
-                  { label: "Goal", value: `$${goal.toLocaleString()}` },
-                  { label: "People", value: String(numContributors) },
-                  { label: "Each", value: `$${amountPerPerson}` },
+                  { label: "Goal", value: `$${goal.toLocaleString()}`, sub: null },
+                  {
+                    label: "People",
+                    value: String(numContributors),
+                    sub: creatorContributes ? "includes you" : null,
+                  },
+                  { label: "Each", value: `$${amountPerPerson}`, sub: null },
                 ].map((pill) => (
                   <div
                     key={pill.label}
@@ -295,6 +318,11 @@ export default function CreatePage() {
                     <div className="font-[family-name:var(--font-mono-jb)] text-[13px] font-bold text-gold sm:text-[15px]">
                       {pill.value}
                     </div>
+                    {pill.sub && (
+                      <div className="mt-0.5 font-[family-name:var(--font-mono-jb)] text-[9px] tracking-[0.08em] text-cream-muted/85">
+                        {pill.sub}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -318,6 +346,17 @@ export default function CreatePage() {
               noValidate
               className="flex flex-col gap-5"
             >
+              {/* Wallet-required banner — only shows when the creator has
+                  opted to contribute but hasn't connected a wallet. Lets them
+                  keep filling out the form, but blocks submit. */}
+              {creatorContributes && !wallet.publicKey && (
+                <ErrorBanner
+                  variant="warning"
+                  title="Connect your wallet first"
+                  message="You're set to contribute, so we need your wallet to pay your share."
+                />
+              )}
+
               {/* 01 — Pool Purpose */}
               <div>
                 <label htmlFor="fp-reason" className={labelCls}>
@@ -393,6 +432,56 @@ export default function CreatePage() {
                   id="fp-contributors-error"
                   message={errors.numContributors}
                 />
+
+                {/* "I'm contributing too" — sits visually inside the 02 block
+                    so it reads as a sub-question of the contributor count, not
+                    a separate numbered step. Custom track + thumb (not a
+                    native checkbox) keeps the brand styling consistent. */}
+                <div className="mt-3 flex items-start justify-between gap-3 rounded-xl border border-[color:var(--border)] bg-white/[0.03] px-4 py-3 transition-colors hover:border-gold/30">
+                  <div className="min-w-0 flex-1">
+                    <label
+                      htmlFor="fp-creator-contributes"
+                      className="block cursor-pointer text-[14px] font-medium text-cream"
+                    >
+                      I&apos;m contributing too
+                    </label>
+                    <p className="mt-0.5 text-[12px] leading-snug text-cream-muted">
+                      Include yourself as one of the contributors.
+                    </p>
+                  </div>
+                  <button
+                    id="fp-creator-contributes"
+                    type="button"
+                    role="switch"
+                    aria-checked={creatorContributes}
+                    aria-label="Include myself as a contributor"
+                    onClick={() => setCreatorContributes((v) => !v)}
+                    className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full p-[3px] outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-gold/60 ${
+                      creatorContributes
+                        ? "bg-gold/85"
+                        : "bg-[color:var(--red-input)]"
+                    }`}
+                    style={{
+                      // Honor the 44×44 touch target without making the
+                      // visible track that tall. The button itself is 44×44
+                      // via the ::before extension.
+                      touchAction: "manipulation",
+                    }}
+                  >
+                    <span
+                      aria-hidden
+                      className="absolute inset-0 -m-2.5"
+                    />
+                    <span
+                      aria-hidden
+                      className={`block size-5 rounded-full shadow-[0_2px_6px_rgba(0,0,0,0.45)] transition-all duration-200 ${
+                        creatorContributes
+                          ? "translate-x-5 bg-[#1a0e0e]"
+                          : "translate-x-0 bg-cream-muted"
+                      }`}
+                    />
+                  </button>
+                </div>
               </div>
 
               {/* 03 — Per Person */}
@@ -501,7 +590,9 @@ export default function CreatePage() {
                   : status === "pending"
                   ? "Sending transaction..."
                   : !wallet.publicKey
-                  ? "Connect wallet first"
+                  ? creatorContributes
+                    ? "Connect wallet to contribute"
+                    : "Connect wallet first"
                   : "Create a Pool"}
               </button>
             </form>

@@ -6,6 +6,13 @@ import { motion, AnimatePresence } from "framer-motion";
 interface PoolOrbitProps {
   nodeCount?: number;
   goalLabel?: string;
+  // Index of the "you" node (creator's own slot) when the creator opts to
+  // contribute. Pass null/undefined to render every node as an external
+  // contributor with the default styling.
+  youIndex?: number | null;
+  // Optional label for the "you" node — wallet address truncated, e.g. "YOU"
+  // or "9xQ…wTk". Defaults to "YOU" when youIndex is set but no label provided.
+  youLabel?: string;
 }
 
 const SIZE = 480;
@@ -60,8 +67,12 @@ function formatProgressLabel(
 export default function PoolOrbit({
   nodeCount = 5,
   goalLabel = "5/5",
+  youIndex = null,
+  youLabel = "YOU",
 }: PoolOrbitProps = {}) {
   const NUM = Math.max(1, Math.min(100, Math.floor(nodeCount)));
+  const youSlot =
+    youIndex != null && youIndex >= 0 && youIndex < NUM ? youIndex : null;
 
   // step: 0 = idle, 1..NUM = coin from contributor i-1 in flight; after NUM = celebrating
   const [step, setStep] = useState(0);
@@ -188,8 +199,28 @@ export default function PoolOrbit({
       {Array.from({ length: NUM }).map((_, i) => {
         const [x, y] = posOf(i);
         const isPaid = i < filled;
+        const isYou = youSlot === i;
+        // Slightly larger node + heavier gold ring to pick out the creator's
+        // own slot. Label is the youLabel ("YOU" or wallet snippet) instead of
+        // a generic initial pair.
+        const nodeR = isYou ? 32 : 28;
+        const ringStrokeWidth = isYou ? 2.2 : isPaid ? 1.6 : 1;
+        const ringOpacity = isYou ? 1 : isPaid ? 0.9 : 0.35;
+        const youLabelTrimmed = youLabel.length > 5 ? youLabel.slice(0, 5) : youLabel;
+        const nodeLabel = isYou ? youLabelTrimmed : labelFor(i);
         return (
           <g key={`c-${i}`}>
+            {/* persistent gold halo behind the "you" node so it reads as the
+                creator even before the orbit animation reaches that slot */}
+            {isYou && (
+              <circle
+                cx={x}
+                cy={y}
+                r={42}
+                fill="#E8B547"
+                fillOpacity={0.1}
+              />
+            )}
             {/* glow when paid */}
             {isPaid && (
               <motion.circle
@@ -207,11 +238,11 @@ export default function PoolOrbit({
             <motion.circle
               cx={x}
               cy={y}
-              r={28}
+              r={nodeR}
               fill="url(#contribFill)"
               stroke="#E8B547"
-              strokeOpacity={isPaid ? 0.9 : 0.35}
-              strokeWidth={isPaid ? 1.6 : 1}
+              strokeOpacity={ringOpacity}
+              strokeWidth={ringStrokeWidth}
               animate={
                 isPaid
                   ? { opacity: 1 }
@@ -227,16 +258,16 @@ export default function PoolOrbit({
               x={x}
               y={y + 4}
               textAnchor="middle"
-              fontSize={11}
-              fontWeight={600}
-              fill={isPaid ? "#E8B547" : "#f5e6e6"}
-              fillOpacity={isPaid ? 1 : 0.55}
+              fontSize={isYou ? 10 : 11}
+              fontWeight={isYou ? 700 : 600}
+              fill={isYou || isPaid ? "#E8B547" : "#f5e6e6"}
+              fillOpacity={isYou ? 1 : isPaid ? 1 : 0.55}
               style={{
                 fontFamily: "var(--font-mono-jb), monospace",
                 letterSpacing: "0.08em",
               }}
             >
-              {labelFor(i)}
+              {nodeLabel}
             </text>
           </g>
         );

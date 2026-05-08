@@ -93,10 +93,12 @@ const CARD_MISSED =
 function PoolCard({
   pool,
   nowSec,
+  tab,
   onDelete,
 }: {
   pool: PoolView;
   nowSec: number;
+  tab: Tab;
   onDelete: (address: string) => void;
 }) {
   const router = useRouter();
@@ -133,6 +135,9 @@ function PoolCard({
           </h3>
           <p className="mt-1 font-[family-name:var(--font-mono-jb)] text-[11px] tracking-wide text-cream-muted/80">
             {shortAddress(pool.address)}
+            {tab === "contributed" && pool.createdByMe && (
+              <span className="ml-2 text-gold/80">(also creator)</span>
+            )}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -473,6 +478,7 @@ export default function HistoryPage() {
                     key={pool.address}
                     pool={pool}
                     nowSec={nowSec}
+                    tab={tab}
                     onDelete={(address) => {
                       forgetPool(address);
                       setPools((prev) => prev.filter((p) => p.address !== address));
