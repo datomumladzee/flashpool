@@ -64,13 +64,37 @@ const ANCHOR_FRIENDLY: Record<
     title: "Already withdrawn",
     message: "These funds have already been claimed.",
   },
-  DeadlineNotPassed: {
+  RefundNotAvailable: {
     title: "Refunds not yet available",
-    message: "Refunds open once the pool's deadline passes.",
+    message: "Refunds open once the pool's deadline passes or contributors vote to close early.",
   },
   GoalWasMet: {
     title: "Refunds not available",
     message: "The goal was met — funds are reserved for the creator.",
+  },
+  CancelAlreadyRequested: {
+    title: "Cancel already pending",
+    message: "A cancel request is already open for this pool. Contributors are voting now.",
+  },
+  CancelNotRequested: {
+    title: "No cancel request",
+    message: "The creator hasn't requested to close this pool yet, so there's nothing to vote on.",
+  },
+  PoolInVoting: {
+    title: "Voting in progress",
+    message: "Contributions are paused while contributors vote on the pending cancel.",
+  },
+  PoolClosedEarly: {
+    title: "Pool closed early",
+    message: "This pool was closed by contributor vote. Contributions are no longer accepted.",
+  },
+  VoteCountOverflow: {
+    title: "Vote count error",
+    message: "Couldn't record your vote because the count would exceed limits. This shouldn't happen — please refresh.",
+  },
+  VoteCountUnderflow: {
+    title: "Vote count error",
+    message: "Couldn't undo your vote — the on-chain count looks inconsistent. Please refresh.",
   },
 };
 

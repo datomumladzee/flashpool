@@ -130,11 +130,20 @@ interface PoolAccount {
   withdrawn: boolean;
   mint: PublicKey;
   bump: number;
+  cancelRequestedAt: BN;
+  closeVotes: number;
+  closedEarly: boolean;
 }
 
 interface ContributionAccount {
   publicKey: PublicKey;
-  account: { contributor: PublicKey; pool: PublicKey; amount: BN; bump: number };
+  account: {
+    contributor: PublicKey;
+    pool: PublicKey;
+    amount: BN;
+    bump: number;
+    votedClose: boolean;
+  };
 }
 
 type TxStatus = "idle" | "signing" | "pending" | "success" | "error";
@@ -296,6 +305,19 @@ export default function PoolPage() {
     ? contributions.find(c => c.account.contributor.toBase58() === wallet.publicKey!.toBase58())
     : null;
   const hasContributed = !!myContribution;
+  const myVotedClose = myContribution?.account.votedClose ?? false;
+  // Early-cancel state — pool stays in voting mode from request_cancel until
+  // either the threshold is met (closed_early latches) or the deadline lapses.
+  const cancelRequestedAt = pool?.cancelRequestedAt.toNumber() ?? 0;
+  const cancelRequested = cancelRequestedAt > 0;
+  const closedEarly = pool?.closedEarly ?? false;
+  const closeVotes = pool?.closeVotes ?? 0;
+  const activePaid = contributions.length;
+  // ≥ 2/3 majority threshold: ceil(2 * activePaid / 3). Display only — the
+  // contract enforces the same math via close_votes * 3 >= active_paid * 2.
+  const votesNeeded = activePaid > 0 ? Math.ceil((2 * activePaid) / 3) : 0;
+  // Refunds are now reachable through three paths instead of just deadline.
+  const refundsOpen = isExpired || closedEarly;
 
   const onchainProgressPct = pool
     ? Math.min(100, (pool.currentAmount.toNumber() / pool.goal.toNumber()) * 100)
@@ -413,6 +435,54 @@ export default function PoolPage() {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  // Creator opens the early-cancel vote. Doesn't move any tokens — just flips
+  // the pool's cancel_requested_at timestamp so contributors can vote.
+  async function requestCancel() {
+    if (!program || !wallet.publicKey || !pool || !poolPda) return;
+    setTxStatus("signing"); setActionError(null);
+    try {
+      setTxStatus("pending");
+      await program.methods.requestCancel()
+        .accounts({
+          creator: wallet.publicKey,
+          pool: poolPda,
+        })
+        .rpc();
+      setTxStatus("success");
+      await fetchPool();
+    } catch (e: unknown) {
+      const translated = translateError(e);
+      setTxStatus(translated.level === "info" ? "idle" : "error");
+      setActionError(translated);
+    }
+  }
+
+  // Paid contributor toggles their yes/no vote on the pending cancel.
+  async function voteClose() {
+    if (!program || !wallet.publicKey || !pool || !poolPda) return;
+    setTxStatus("signing"); setActionError(null);
+    try {
+      const [contributionPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("contribution"), poolPda.toBuffer(), wallet.publicKey.toBuffer()],
+        PROGRAM_ID,
+      );
+      setTxStatus("pending");
+      await program.methods.voteClose()
+        .accounts({
+          contributor: wallet.publicKey,
+          pool: poolPda,
+          contribution: contributionPda,
+        })
+        .rpc();
+      setTxStatus("success");
+      await fetchPool();
+    } catch (e: unknown) {
+      const translated = translateError(e);
+      setTxStatus(translated.level === "info" ? "idle" : "error");
+      setActionError(translated);
+    }
+  }
+
   // ── action button ──
   function ActionButton() {
     const busy = txStatus === "signing" || txStatus === "pending";
@@ -438,20 +508,50 @@ export default function PoolPage() {
       </div>
     );
 
-    if (isExpired && !isGoalMet && hasContributed) return (
+    // Refund — available when deadline passed OR pool was closed early by vote.
+    if (refundsOpen && !isGoalMet && hasContributed) return (
       <button onClick={refund} disabled={busy} className={goldBtnCls}>
         <span aria-hidden className="text-[18px] leading-none">↩</span>
         {label ?? `Refund ${amountUSDC} USDC`}
       </button>
     );
 
-    if (isExpired && isCreator) return (
-      <div className={infoBadgeCls}>Pool expired — contributors can refund</div>
+    if (refundsOpen && isCreator && !isGoalMet) return (
+      <div className={infoBadgeCls}>
+        {closedEarly
+          ? "Pool closed by vote — contributors can refund"
+          : "Pool expired — contributors can refund"}
+      </div>
     );
 
-    if (isExpired) return (
-      <div className={infoBadgeCls}>Pool expired</div>
+    if (refundsOpen && !isGoalMet) return (
+      <div className={infoBadgeCls}>
+        {closedEarly ? "Pool closed early" : "Pool expired"}
+      </div>
     );
+
+    // Cancel-vote in progress — block contribute, surface the relevant action.
+    if (cancelRequested && !closedEarly) {
+      // Paid contributor: show the vote toggle button.
+      if (hasContributed) {
+        const voteLabel = myVotedClose
+          ? "Withdraw approval"
+          : "Approve early close";
+        return (
+          <button onClick={voteClose} disabled={busy} className={goldBtnCls}>
+            <span aria-hidden className="text-[18px] leading-none">⊘</span>
+            {label ?? voteLabel}
+          </button>
+        );
+      }
+      // Creator (already requested) or random visitor: read-only badge.
+      return (
+        <div className={infoBadgeCls}>
+          Vote in progress — {closeVotes} of {activePaid} approved
+          {votesNeeded > 0 && ` · need ${votesNeeded}`}
+        </div>
+      );
+    }
 
     // Creator who's already paid — show the same confirmation as any other
     // contributor. (Checked before the catch-all isCreator branch so the
@@ -557,8 +657,14 @@ export default function PoolPage() {
     status: "paid" | "refunded" | "pending";
     txSig?: string;
     isCreator?: boolean;
+    votedClose?: boolean;
   };
   const onchainPdaSet = new Set(contributions.map((c) => c.publicKey.toBase58()));
+  // Snapshot path doesn't carry vote state — only live contributions do. We
+  // look up votes by PDA so refunded entries simply don't show a VOTED pill.
+  const votedByPda = new Map(
+    contributions.map((c) => [c.publicKey.toBase58(), c.account.votedClose] as const),
+  );
   const creatorAddr = pool.creator.toBase58();
   const baseDisplayContributors: DisplayContributor[] =
     missed && snapshot && snapshot.contributors.length > 0
@@ -569,6 +675,7 @@ export default function PoolPage() {
           status: onchainPdaSet.has(c.contributionPda) ? "paid" : "refunded",
           txSig: txSigs[c.contributionPda],
           isCreator: c.contributor === creatorAddr,
+          votedClose: votedByPda.get(c.contributionPda) ?? false,
         }))
       : contributions.map((c) => ({
           contributor: c.account.contributor.toBase58(),
@@ -577,6 +684,7 @@ export default function PoolPage() {
           status: "paid",
           txSig: txSigs[c.publicKey.toBase58()],
           isCreator: c.account.contributor.toBase58() === creatorAddr,
+          votedClose: c.account.votedClose,
         }));
 
   // Did the creator opt to be one of the N contributors? Persisted locally
@@ -658,10 +766,32 @@ export default function PoolPage() {
           <GoldBoltsCelebration active={celebrating} />
           <div className="relative z-0 p-4 sm:p-6 lg:p-8">
 
+            {/* Cancel-vote banners — sit above the header so they're the first
+                thing a contributor sees on a pool in voting mode or one that
+                was just closed by vote. */}
+            {cancelRequested && !closedEarly && !isExpired && !isClosed && (
+              <div className="mb-5">
+                <ErrorBanner
+                  variant="warning"
+                  title="Creator requested to close this pool"
+                  message={`${closeVotes} of ${activePaid} contributors approved · need ${votesNeeded} for refunds. New contributions are paused while the vote is open.`}
+                />
+              </div>
+            )}
+            {closedEarly && !isClosed && (
+              <div className="mb-5">
+                <ErrorBanner
+                  variant="error"
+                  title="Pool closed early by contributor vote"
+                  message="A two-thirds majority of contributors approved the close. Refunds are open — each contributor signs their own refund."
+                />
+              </div>
+            )}
+
             {/* Header */}
             <div className="mb-7">
               <p className={`${monoCls} mb-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-gold`}>
-                {!isClosed && !isExpired && !goalReached && (
+                {!isClosed && !isExpired && !goalReached && !cancelRequested && !closedEarly && (
                   <span className="relative flex size-1.5">
                     <span className="absolute inset-0 animate-ping rounded-full bg-gold opacity-60" />
                     <span className="relative size-1.5 rounded-full bg-gold" />
@@ -671,6 +801,10 @@ export default function PoolPage() {
                   ? "Closed pool"
                   : goalReached
                   ? "Goal reached"
+                  : closedEarly
+                  ? "Closed by vote"
+                  : cancelRequested
+                  ? "Vote in progress"
                   : isExpired
                   ? "Expired pool"
                   : "Active pool"}
@@ -825,6 +959,14 @@ export default function PoolPage() {
                             CREATOR
                           </span>
                         )}
+                        {c.votedClose && cancelRequested && !closedEarly && (
+                          <span
+                            className={`${monoCls} rounded-full border border-cream-muted/35 bg-white/[0.04] px-2.5 py-0.5 text-[10px] font-bold tracking-[0.08em] text-cream-muted`}
+                            title="Voted to close pool early"
+                          >
+                            VOTED
+                          </span>
+                        )}
                         <span className={`${monoCls} ${statusPillCls}`}>
                           {statusPillLabel}
                         </span>
@@ -865,6 +1007,37 @@ export default function PoolPage() {
                 />
               </div>
             )}
+
+            {/* Creator-only secondary action: open the early-cancel vote.
+                Shown only when the pool is genuinely active — pre-deadline,
+                pre-goal, no cancel pending, not already closed. Confirmation
+                handled inline via window.confirm because the rest of the
+                page doesn't have a modal pattern yet. */}
+            {isCreator &&
+              !cancelRequested &&
+              !closedEarly &&
+              !isExpired &&
+              !isGoalMet &&
+              !isClosed && (
+                <div className="mb-3">
+                  <button
+                    type="button"
+                    disabled={txStatus === "signing" || txStatus === "pending"}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          "This starts a vote to close the pool. Two-thirds of contributors must approve before refunds open. New contributions will be paused. You can't undo this.",
+                        )
+                      ) {
+                        void requestCancel();
+                      }
+                    }}
+                    className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-[color:var(--destructive)]/40 bg-[color:var(--destructive)]/[0.06] px-5 py-3 text-[13px] font-semibold text-[color:var(--destructive)] transition-all duration-200 hover:border-[color:var(--destructive)]/65 hover:bg-[color:var(--destructive)]/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Request to close pool early
+                  </button>
+                </div>
+              )}
 
             {/* Bottom actions — stack on phones, side-by-side from sm+ */}
             <div className="flex flex-col gap-3 sm:flex-row">

@@ -656,6 +656,138 @@
       "args": []
     },
     {
+      "name": "request_cancel",
+      "discriminator": [
+        244,
+        78,
+        42,
+        227,
+        165,
+        174,
+        94,
+        167
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_index",
+                "account": "Pool"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "vote_close",
+      "discriminator": [
+        181,
+        80,
+        119,
+        116,
+        91,
+        142,
+        167,
+        149
+      ],
+      "accounts": [
+        {
+          "name": "contributor",
+          "signer": true,
+          "relations": [
+            "contribution"
+          ]
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_index",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "contribution",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  116,
+                  114,
+                  105,
+                  98,
+                  117,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "contributor"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "withdraw",
       "discriminator": [
         183,
@@ -977,13 +1109,43 @@
     },
     {
       "code": 6008,
-      "name": "DeadlineNotPassed",
-      "msg": "Deadline has not passed yet — refunds not available"
+      "name": "RefundNotAvailable",
+      "msg": "Refunds are not available yet — deadline not reached and pool not closed early"
     },
     {
       "code": 6009,
       "name": "GoalWasMet",
       "msg": "Goal was met — refunds not available"
+    },
+    {
+      "code": 6010,
+      "name": "CancelAlreadyRequested",
+      "msg": "A cancel request is already pending for this pool"
+    },
+    {
+      "code": 6011,
+      "name": "CancelNotRequested",
+      "msg": "No cancel request is pending — only contributors of a cancel-pending pool may vote"
+    },
+    {
+      "code": 6012,
+      "name": "PoolInVoting",
+      "msg": "Pool is in voting mode — new contributions are paused"
+    },
+    {
+      "code": 6013,
+      "name": "PoolClosedEarly",
+      "msg": "Pool was closed early by contributor vote"
+    },
+    {
+      "code": 6014,
+      "name": "VoteCountOverflow",
+      "msg": "Vote count would overflow"
+    },
+    {
+      "code": 6015,
+      "name": "VoteCountUnderflow",
+      "msg": "Vote count would underflow"
     }
   ],
   "types": [
@@ -1007,6 +1169,10 @@
           {
             "name": "bump",
             "type": "u8"
+          },
+          {
+            "name": "voted_close",
+            "type": "bool"
           }
         ]
       }
@@ -1059,6 +1225,18 @@
           {
             "name": "bump",
             "type": "u8"
+          },
+          {
+            "name": "cancel_requested_at",
+            "type": "i64"
+          },
+          {
+            "name": "close_votes",
+            "type": "u8"
+          },
+          {
+            "name": "closed_early",
+            "type": "bool"
           }
         ]
       }

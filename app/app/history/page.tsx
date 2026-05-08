@@ -29,6 +29,7 @@ type PoolView = {
   deadline: number;
   createdByMe: boolean;
   contributedByMe: boolean;
+  closedEarly: boolean;
 };
 
 interface PoolAccount {
@@ -43,13 +44,18 @@ interface PoolAccount {
   withdrawn: boolean;
   mint: PublicKey;
   bump: number;
+  cancelRequestedAt: BN;
+  closeVotes: number;
+  closedEarly: boolean;
 }
 
 function classifyPool(pool: PoolView, nowSec: number): Status {
   const goalReached = pool.raised >= pool.goal;
   const expired = nowSec >= pool.deadline;
   if (goalReached) return "reached";
-  if (expired) return "missed";
+  // Treat early-closed pools as "missed" — same red styling, same "past"
+  // filter bucket. The pool didn't reach its goal and is now refundable.
+  if (expired || pool.closedEarly) return "missed";
   return "live";
 }
 
@@ -154,7 +160,9 @@ function PoolCard({
             <span className={STATUS_PILL_REACHED}>GOAL REACHED</span>
           )}
           {status === "missed" && (
-            <span className={STATUS_PILL_MISSED}>GOAL NOT MET</span>
+            <span className={STATUS_PILL_MISSED}>
+              {pool.closedEarly ? "CLOSED EARLY" : "GOAL NOT MET"}
+            </span>
           )}
           <button
             type="button"
@@ -347,6 +355,7 @@ export default function HistoryPage() {
               deadline,
               createdByMe: created.has(addr),
               contributedByMe: contributed.has(addr),
+              closedEarly: account.closedEarly,
             };
           } catch {
             // Pool account is gone (creator closed it, etc). If we have a
@@ -362,6 +371,7 @@ export default function HistoryPage() {
               deadline: snap.deadline,
               createdByMe: created.has(addr),
               contributedByMe: contributed.has(addr),
+              closedEarly: false,
             };
           }
         }),
