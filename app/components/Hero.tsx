@@ -32,18 +32,25 @@ function BoltMark() {
 export default function Hero() {
   return (
     <section className="relative">
+      {/* Cap the hero to the same width the rest of the page uses
+          (HowItWorks/WhyOnChain/Footer all wrap their content in
+          max-w-7xl mx-auto). Below 1280px this is a no-op — viewport is
+          smaller than the cap, so padding still does all the work — but on
+          ultra-wide monitors the hero stops stretching to the edges and
+          stays centered with the sections below. */}
+      <div className="mx-auto w-full max-w-7xl">
       <div className="grid grid-cols-1 items-center gap-10 px-4 pt-8 pb-14 sm:px-6 md:px-8 lg:grid-cols-2 lg:gap-8 lg:px-12 lg:pt-12 lg:pb-16">
         {/* LEFT — text */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, ease: "easeOut" }}
-          className="w-full min-w-0 lg:max-w-[640px] lg:pl-[60px]"
+          className="w-full min-w-0 lg:max-w-[720px] lg:pl-[60px]"
         >
           {/* Headline block — eyebrow + bolt + text, all sharing the same width */}
           <div className="mb-6">
             {/* Eyebrow — centered above the headline block */}
-            <p className="mb-5 text-center font-[family-name:var(--font-mono-jb)] text-[11px] uppercase tracking-[0.22em] text-gold lg:pr-[130px]">
+            <p className="mb-5 text-center font-[family-name:var(--font-mono-jb)] text-[11px] uppercase tracking-[0.22em] text-gold lg:pr-[80px]">
               Powered by Solana
             </p>
             <div className="flex min-w-0 items-stretch justify-center gap-3 sm:gap-4 lg:justify-start lg:gap-5">
@@ -55,7 +62,7 @@ export default function Hero() {
                 <BoltMark />
               </div>
               <div className="flex min-w-0 flex-col text-center md:text-left">
-                <h1 className="text-[clamp(32px,5.8vw,76px)] font-bold leading-[1.02] tracking-[-0.012em] text-cream">
+                <h1 className="whitespace-nowrap text-[clamp(40px,5vw,64px)] font-bold leading-[1.02] tracking-[-0.012em] text-cream">
                   Pool Money
                 </h1>
                 <p className="font-[family-name:var(--font-serif)] text-[clamp(26px,5.2vw,64px)] font-bold italic leading-[1.05] text-gold">
@@ -76,7 +83,7 @@ export default function Hero() {
           </div>
 
           {/* Trust line — aligned with CTA row above */}
-          <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1.5 font-[family-name:var(--font-mono-jb)] text-[10px] tracking-wide text-cream-muted/85 sm:text-[11px] lg:max-w-[560px] lg:pr-[120px]">
+          <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1.5 font-[family-name:var(--font-mono-jb)] text-[10px] tracking-wide text-cream-muted/85 sm:text-[11px] lg:max-w-[560px] lg:pr-[60px]">
             <span className="relative mr-1 flex size-1.5">
               <span className="absolute inset-0 animate-ping rounded-full bg-gold opacity-60" />
               <span className="relative size-1.5 rounded-full bg-gold" />
@@ -98,6 +105,7 @@ export default function Hero() {
         >
           <PoolOrbit />
         </motion.div>
+        </div>
       </div>
     </section>
   );

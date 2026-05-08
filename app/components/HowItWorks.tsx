@@ -83,7 +83,7 @@ export default function HowItWorks() {
         </motion.div>
 
         {/* Step cards */}
-        <div className="grid grid-cols-1 gap-6 sm:gap-8 md:grid-cols-3 lg:gap-10">
+        <div className="grid grid-cols-1 gap-5 sm:gap-6 md:grid-cols-3 lg:gap-8">
           {STEPS.map((step, i) => {
             const v = VARIANTS[i];
             const Icon = step.icon;
@@ -99,29 +99,30 @@ export default function HowItWorks() {
                   delay: i * 0.12,
                 }}
                 whileHover={{ y: -6 }}
-                className={`group relative flex min-h-[320px] flex-col rounded-3xl p-7 transition-shadow duration-300 sm:min-h-[400px] sm:p-10 lg:p-12 ${v.card} ${v.glow}`}
+                className={`group relative flex min-h-[260px] flex-col rounded-3xl p-6 transition-shadow duration-300 sm:min-h-[320px] sm:p-8 lg:p-9 ${v.card} ${v.glow}`}
               >
-                {/* Number — Fraunces italic, large, dominant */}
+                {/* Number — Fraunces italic, dominant but no longer dwarfing
+                    the rest of the card now that the body is more compact. */}
                 <span
-                  className={`mb-6 font-[family-name:var(--font-serif)] text-[56px] font-bold italic leading-none tracking-tight sm:mb-10 sm:text-[68px] lg:text-[76px] ${v.number}`}
+                  className={`mb-5 font-[family-name:var(--font-serif)] text-[44px] font-bold italic leading-none tracking-tight sm:mb-8 sm:text-[54px] lg:text-[60px] ${v.number}`}
                 >
                   {step.num}
                 </span>
 
                 {/* Icon */}
                 <span
-                  className={`mb-6 inline-flex size-12 items-center justify-center rounded-2xl transition-all duration-300 group-hover:scale-105 sm:mb-8 sm:size-14 ${v.iconWrap}`}
+                  className={`mb-5 inline-flex size-10 items-center justify-center rounded-2xl transition-all duration-300 group-hover:scale-105 sm:mb-6 sm:size-12 ${v.iconWrap}`}
                 >
-                  <Icon className="size-6 text-gold sm:size-7" strokeWidth={1.6} />
+                  <Icon className="size-5 text-gold sm:size-6" strokeWidth={1.6} />
                 </span>
 
                 {/* Title */}
-                <h3 className="mb-4 text-[22px] font-bold leading-tight tracking-tight text-cream sm:mb-5 sm:text-[28px]">
+                <h3 className="mb-3 text-[19px] font-bold leading-tight tracking-tight text-cream sm:mb-4 sm:text-[24px]">
                   {step.title}
                 </h3>
 
                 {/* Body */}
-                <p className="text-[15px] leading-[1.65] text-cream-muted sm:text-[16px]">
+                <p className="text-[14px] leading-[1.6] text-cream-muted sm:text-[15px]">
                   {step.body}
                 </p>
               </motion.div>
