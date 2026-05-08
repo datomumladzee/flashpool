@@ -32,6 +32,19 @@ const jetbrains = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "FlashPool | Group Pooling On Solana",
   description: "Pool funds together — fully on-chain.",
+
+  openGraph: {
+    title: "FlashPool | Group Pooling On Solana",
+    description: "Pool funds together — fully on-chain.",
+    images: ["/og-image.png"],
+  },
+
+  twitter: {
+    card: "summary_large_image",
+    title: "FlashPool | Group Pooling On Solana",
+    description: "Pool funds together — fully on-chain.",
+    images: ["/og-image.png"],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
