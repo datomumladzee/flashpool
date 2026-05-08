@@ -30,8 +30,8 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FlashPool — Pool money on Solana",
-  description: "Settle group payments on Solana. No middleman, no chasing, no awkwardness.",
+  title: "FlashPool | Group Pooling On Solana",
+  description: "Pool funds together — fully on-chain.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
