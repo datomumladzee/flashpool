@@ -89,16 +89,19 @@ export default function Roadmap() {
           </p>
         </motion.div>
 
-        {/* Path stage — aspect-locked so the SVG and the HTML label overlay
-            share an identical coordinate space at every viewport width.
-            ~70% of the page width on large screens. */}
-        <div
-          className="relative mx-auto mb-12 w-full max-w-[880px] md:mb-16"
-          style={{ aspectRatio: `${VB.w} / ${VB.h}` }}
-        >
+        {/* Path stage — taller aspect on mobile so the curve has vertical
+            presence; matches the SVG's natural aspect on sm+. The SVG uses
+            preserveAspectRatio="none" so it always fills the container — on
+            mobile that means the path stretches vertically (giving the
+            curve real amplitude on a small screen) and the dots become
+            very slightly taller ovals, which is an acceptable trade for
+            visibility. The label overlay positions itself from the same
+            viewBox proportions, so labels stay anchored to their dots at
+            every breakpoint. */}
+        <div className="relative mx-auto mb-12 aspect-[1000/360] w-full max-w-[880px] sm:aspect-[1000/220] md:mb-16">
           <svg
             viewBox={`0 0 ${VB.w} ${VB.h}`}
-            preserveAspectRatio="xMidYMid meet"
+            preserveAspectRatio="none"
             className="absolute inset-0 h-full w-full"
             aria-hidden
           >
