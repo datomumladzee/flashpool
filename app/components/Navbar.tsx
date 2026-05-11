@@ -29,7 +29,7 @@ function NavLink({
     <Link
       href={href}
       onClick={onClick}
-      className={`${LINK_FONT} group relative text-[12.5px] font-medium uppercase tracking-[0.16em] transition-colors duration-200 ${
+      className={`${LINK_FONT} group relative text-[11.5px] font-medium uppercase tracking-[0.14em] transition-colors duration-200 ${
         active ? "text-gold" : "text-cream/85 hover:text-cream"
       }`}
     >
@@ -59,6 +59,23 @@ function HowItWorksLink() {
   return (
     <NavLink href="/#how-it-works" active={false} onClick={onClick}>
       How it works
+    </NavLink>
+  );
+}
+
+function RoadmapLink() {
+  const pathname = usePathname();
+  const onClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (pathname === "/") {
+      e.preventDefault();
+      document
+        .getElementById("roadmap")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+  return (
+    <NavLink href="/#roadmap" active={false} onClick={onClick}>
+      Roadmap
     </NavLink>
   );
 }
@@ -300,7 +317,7 @@ export default function Navbar({ sticky = true }: { sticky?: boolean } = {}) {
         </button>
 
         {/* Desktop link group — hidden below lg. */}
-        <div className="hidden flex-1 items-center gap-12 pl-8 lg:flex xl:gap-14 xl:pl-16">
+        <div className="hidden flex-1 items-center gap-9 pl-8 lg:flex xl:gap-11 xl:pl-16">
           <NavLink href="/create" active={pathname === "/create"}>
             Create
           </NavLink>
@@ -319,8 +336,9 @@ export default function Navbar({ sticky = true }: { sticky?: boolean } = {}) {
         <div className="flex-1 lg:hidden" />
 
         <div className="ml-auto flex flex-1 items-center justify-end gap-6 lg:gap-10 xl:gap-12">
-          <div className="hidden items-center gap-12 pr-2 lg:flex xl:gap-14 xl:pr-4">
+          <div className="hidden items-center gap-9 pr-2 lg:flex xl:gap-11 xl:pr-4">
             <HowItWorksLink />
+            <RoadmapLink />
             <FooterLink />
           </div>
           <div className="fp-wallet-trigger">
@@ -430,6 +448,25 @@ export default function Navbar({ sticky = true }: { sticky?: boolean } = {}) {
                     className={`${LINK_FONT} flex min-h-[44px] items-center rounded-lg px-3 text-[14px] font-medium uppercase tracking-[0.14em] text-cream/85 transition-colors hover:bg-white/[0.05] hover:text-cream`}
                   >
                     How it works
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    href="/#roadmap"
+                    onClick={(e) => {
+                      setMenuOpen(false);
+                      if (pathname === "/") {
+                        e.preventDefault();
+                        setTimeout(() => {
+                          document
+                            .getElementById("roadmap")
+                            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                        }, 220);
+                      }
+                    }}
+                    className={`${LINK_FONT} flex min-h-[44px] items-center rounded-lg px-3 text-[14px] font-medium uppercase tracking-[0.14em] text-cream/85 transition-colors hover:bg-white/[0.05] hover:text-cream`}
+                  >
+                    Roadmap
                   </Link>
                 </li>
                 <li>
