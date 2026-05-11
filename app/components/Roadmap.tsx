@@ -17,14 +17,16 @@ const PATH_D =
   "C 520 60, 540 160, 620 160 " +
   "C 760 160, 780 60, 920 60";
 
-// Mobile (<sm) — taller viewBox + wider Y range so the curve still
-// reads as a road, not a flat squiggle, at phone widths.
-const MOBILE_VB = { w: 1000, h: 380 };
+// Mobile (<sm) — compact S-curve at the top of the section, ~100px tall
+// on a 328px-wide viewport (aspect 1000/300 → height = width * 0.3).
+// Path Y range 50↔220 inside a 300-tall canvas keeps dots clear of the
+// top/bottom edges and leaves room below for the labels.
+const MOBILE_VB = { w: 1000, h: 300 };
 const MOBILE_PATH_D =
-  "M 80 300 " +
-  "C 220 300, 240 80, 380 80 " +
-  "C 520 80, 540 300, 620 300 " +
-  "C 760 300, 780 80, 920 80";
+  "M 80 220 " +
+  "C 220 220, 240 50, 380 50 " +
+  "C 520 50, 540 220, 620 220 " +
+  "C 760 220, 780 50, 920 50";
 
 type Milestone = {
   tag: string;
@@ -44,10 +46,10 @@ const MILESTONES: Milestone[] = [
 ];
 
 const MOBILE_MILESTONES: Milestone[] = [
-  { tag: "NOW",    svgX:  80, svgY: 300, active: true, delay: 0.25 },
-  { tag: "NEXT",   svgX: 380, svgY:  80,               delay: 0.70 },
-  { tag: "EXPAND", svgX: 620, svgY: 300,               delay: 1.15 },
-  { tag: "VISION", svgX: 920, svgY:  80,               delay: 1.60 },
+  { tag: "NOW",    svgX:  80, svgY: 220, active: true, delay: 0.25 },
+  { tag: "NEXT",   svgX: 380, svgY:  50,               delay: 0.70 },
+  { tag: "EXPAND", svgX: 620, svgY: 220,               delay: 1.15 },
+  { tag: "VISION", svgX: 920, svgY:  50,               delay: 1.60 },
 ];
 
 type Card = {
@@ -130,7 +132,10 @@ function CurveStage({
           </filter>
         </defs>
 
-        {/* Soft glow underlay — same path, fat & blurred, gives the line warmth. */}
+        {/* Soft glow underlay — same path, fat & blurred, gives the line warmth.
+            Uses `animate` (mount-triggered) instead of whileInView so the curve
+            is guaranteed to draw on mobile, where IntersectionObserver-based
+            viewport triggers were misfiring on iOS Safari. */}
         <motion.path
           d={path}
           fill="none"
@@ -140,8 +145,7 @@ function CurveStage({
           strokeLinecap="round"
           filter={`url(#${filterId})`}
           initial={{ pathLength: 0, opacity: 0 }}
-          whileInView={{ pathLength: 1, opacity: 1 }}
-          viewport={{ once: true, margin: "-100px" }}
+          animate={{ pathLength: 1, opacity: 1 }}
           transition={{
             pathLength: { duration: 2, ease: [0.22, 1, 0.36, 1] },
             opacity: { duration: 0.5, ease: "easeOut" },
@@ -157,8 +161,7 @@ function CurveStage({
           strokeLinecap="round"
           vectorEffect="non-scaling-stroke"
           initial={{ pathLength: 0, opacity: 0 }}
-          whileInView={{ pathLength: 1, opacity: 1 }}
-          viewport={{ once: true, margin: "-100px" }}
+          animate={{ pathLength: 1, opacity: 1 }}
           transition={{
             pathLength: { duration: 2, ease: [0.22, 1, 0.36, 1] },
             opacity: { duration: 0.4, ease: "easeOut" },
@@ -179,8 +182,7 @@ function CurveStage({
                   stroke="#E8B547"
                   strokeWidth="2"
                   initial={{ opacity: 0, scale: 1 }}
-                  whileInView={{ opacity: [0, 0.65, 0], scale: [1, 2.6, 2.6] }}
-                  viewport={{ once: true, margin: "-100px" }}
+                  animate={{ opacity: [0, 0.65, 0], scale: [1, 2.6, 2.6] }}
                   transition={{
                     delay: m.delay + 0.4,
                     duration: 2.4,
@@ -197,11 +199,10 @@ function CurveStage({
                   r={22}
                   fill="#E8B547"
                   initial={{ opacity: 0, scale: 0.7 }}
-                  whileInView={{
+                  animate={{
                     opacity: [0, 0.55, 0.3, 0.55, 0.3],
                     scale: [0.7, 1, 1.35, 1, 1.35],
                   }}
-                  viewport={{ once: true, margin: "-100px" }}
                   transition={{
                     delay: m.delay + 0.45,
                     duration: 3.6,
@@ -226,8 +227,7 @@ function CurveStage({
               stroke="rgba(255,255,255,0.22)"
               strokeWidth="1.5"
               initial={{ opacity: 0, scale: 0 }}
-              whileInView={{ opacity: 1, scale: m.active ? [0, 1.3, 1] : 1 }}
-              viewport={{ once: true, margin: "-100px" }}
+              animate={{ opacity: 1, scale: m.active ? [0, 1.3, 1] : 1 }}
               transition={{
                 delay: m.delay,
                 duration: m.active ? 0.7 : 0.5,
@@ -250,8 +250,7 @@ function CurveStage({
                 fill="#fff8e3"
                 fillOpacity="0.95"
                 initial={{ opacity: 0 }}
-                whileInView={{ opacity: 0.95 }}
-                viewport={{ once: true, margin: "-100px" }}
+                animate={{ opacity: 0.95 }}
                 transition={{ delay: m.delay + 0.3, duration: 0.4 }}
               />
             )}
@@ -276,8 +275,7 @@ function CurveStage({
           >
             <motion.div
               initial={{ opacity: 0, y: -12 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-100px" }}
+              animate={{ opacity: 1, y: 0 }}
               transition={{
                 delay: m.delay + 0.18,
                 duration: 0.5,
