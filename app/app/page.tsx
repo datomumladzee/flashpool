@@ -6,6 +6,7 @@ import Hero from "@/components/Hero";
 import Intro from "@/components/Intro";
 import HowItWorks from "@/components/HowItWorks";
 import WhyOnChain from "@/components/WhyOnChain";
+import Roadmap from "@/components/Roadmap";
 import FinalCTA from "@/components/FinalCTA";
 import Footer from "@/components/Footer";
 import SectionDivider from "@/components/SectionDivider";
@@ -39,6 +40,8 @@ export default function Home() {
       <HowItWorks />
       <SectionDivider />
       <WhyOnChain />
+      <SectionDivider />
+      <Roadmap />
       <SectionDivider />
       <FinalCTA />
       <SectionDivider />
